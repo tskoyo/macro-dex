@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Farmers Market</title>
+<style>
+  :root {
+    --bg: #f6f5f0; --panel: #ffffff; --text: #1d2a1f; --muted: #6b766c; --border: #dcded6;
+    --accent: #2f7a3e; --accent-text: #ffffff; --danger: #b23a2e; --chip: #eef0e8;
+    --ok: #2f7a3e; --warn: #a0700b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121512; --panel: #1b201c; --text: #e6ebe4; --muted: #94a094; --border: #2d352e;
+      --accent: #5bb46b; --accent-text: #0d140e; --danger: #e0705f; --chip: #252c26; --ok: #6cc47b; --warn: #d9a440; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .sub { color: var(--muted); font-size: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .full { grid-column: 1 / -1; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+  .stat { background: var(--chip); border-radius: 8px; padding: 8px 10px; }
+  .stat b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 9px; width: 100%; }
+  .field { flex: 1 1 140px; }
+  button { font: inherit; cursor: pointer; border-radius: 6px; padding: 7px 12px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); white-space: nowrap; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.danger { color: var(--danger); border-color: var(--danger); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; }
+  .seg button.on { background: var(--chip); font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--chip); }
+  .badge.Open { color: var(--ok); } .badge.Filled { color: var(--muted); } .badge.Cancelled { color: var(--danger); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  #log { max-height: 220px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+  #log li { padding: 4px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  #log .err { color: var(--danger); } #log .ok { color: var(--ok); }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .you { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>🧑‍🌾 Farmers Market</h1>
+      <div class="sub">Local anvil · <span id="chainInfo">connecting…</span></div>
+    </div>
+    <div class="row">
+      <span class="sub">Chain time: <b id="chainTime">–</b></span>
+      <button id="warpBtn" title="evm_increaseTime + evm_mine">⏩ +24h</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Account</h2>
+      <select id="account"></select>
+      <div class="stats">
+        <div class="stat"><b id="balEth">–</b><span>ETH</span></div>
+        <div class="stat"><b id="balWeth">–</b><span>WETH</span></div>
+        <div class="stat"><b id="balDai">–</b><span>DAI</span></div>
+      </div>
+      <div class="row">
+        <button id="mintDaiBtn">Mint 10,000 DAI</button>
+        <button id="wrapBtn">Wrap 1 ETH → WETH</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Sell ETH (place order)</h2>
+      <div class="row" style="margin-bottom:10px">
+        <div class="seg" id="payWith">
+          <button data-v="eth" class="on">Pay with ETH</button>
+          <button data-v="weth">Pay with WETH</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="amount">Amount (ETH, step 0.01)</label><input id="amount" value="1" inputmode="decimal"></div>
+        <div class="field"><label for="price">Price (whole DAI per ETH)</label><input id="price" value="3000" inputmode="numeric"></div>
+      </div>
+      <div class="row" style="margin-top:10px; justify-content:space-between">
+        <span class="sub">Total: <b id="total">–</b> DAI · Cap: <span id="cap">–</span> ETH</span>
+        <button class="primary" id="placeBtn">Place order</button>
+      </div>
+    </section>
+
+    <section class="panel full">
+      <div class="row" style="justify-content:space-between; margin-bottom:8px">
+        <h2 style="margin:0">Orders</h2>
+        <label class="row" style="margin:0; color:var(--muted)"><input type="checkbox" id="openOnly" style="width:auto"> Open only</label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Farmer</th><th>Amount</th><th>Price</th><th>Cost (DAI)</th><th>Created</th><th>Status</th><th></th></tr></thead>
+          <tbody id="orders"><tr><td colspan="8" class="sub">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="hint">Buying approves DAI for the exact cost, then calls <span class="mono">fill</span>. Farmers can cancel 24h after placing — use ⏩ to skip ahead.</div>
+    </section>
+
+    <section class="panel full">
+      <h2>Activity</h2>
+      <ul id="log"></ul>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js";
+
+const RPC = "http://127.0.0.1:8545";
+const STATUS = ["Open", "Filled", "Cancelled"];
+
+const MARKET_ABI = [
+  "function placeOrderETH(uint256 price) payable returns (uint256)",
+  "function placeOrderWETH(uint256 amount, uint256 price) returns (uint256)",
+  "function fill(uint256 id)",
+  "function cancel(uint256 id)",
+  "function getOrder(uint256 id) view returns (tuple(uint256 id, uint256 amount, uint256 price, address farmer, uint40 createdAt, uint8 status))",
+  "function nextOrderId() view returns (uint256)",
+  "function maxOrderAmount() view returns (uint256)",
+  "function CANCEL_LOCK() view returns (uint256)",
+  "error ZeroAddress()", "error WrongDecimals()", "error InvalidCap()", "error InvalidAmount()",
+  "error AmountAboveCap()", "error InvalidPrice()", "error OrderNotFound()", "error OrderNotOpen()",
+  "error NotFarmer()", "error StillLocked(uint256 unlocksAt)",
+  "error SafeERC20FailedOperation(address token)",
+];
+const ERC20_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function deposit() payable",
+  "function mint(address to, uint256 amount)",
+  "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
+  "error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)",
+];
+
+const $ = (id) => document.getElementById(id);
+const provider = new ethers.JsonRpcProvider(RPC, undefined, { pollingInterval: 1000 });
+let addrs, accounts = [], me, signer, market, weth, dai, cap, cancelLock, payWith = "eth", busy = false;
+
+const short = (a) => a.slice(0, 6) + "…" + a.slice(-4);
+const fmt = (wei, dp = 4) => Number(ethers.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: dp });
+const fmtTime = (ts) => new Date(Number(ts) * 1000).toLocaleString();
+
+function log(msg, cls = "") {
+  const li = document.createElement("li");
+  li.className = cls;
+  li.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  $("log").prepend(li);
+}
+
+function errMsg(e) {
+  if (e?.revert) return `${e.revert.name}(${e.revert.args.map(String).join(", ")})`;
+  // Try decoding raw revert data against all known errors.
+  const data = e?.data ?? e?.info?.error?.data;
+  if (typeof data === "string" && data.length >= 10) {
+    for (const abi of [MARKET_ABI, ERC20_ABI]) {
+      try { const d = new ethers.Interface(abi).parseError(data); if (d) return `${d.name}(${d.args.map(String).join(", ")})`; } catch {}
+    }
+  }
+  return e?.shortMessage || e?.message || String(e);
+}
+
+async function send(label, fn) {
+  if (busy) return;
+  busy = true; document.querySelectorAll("button").forEach((b) => (b.disabled = true));
+  try {
+    const tx = await fn();
+    const rc = await tx.wait();
+    log(`${label} ✓ (block ${rc.blockNumber}, gas ${rc.gasUsed})`, "ok");
+    return rc;
+  } catch (e) {
+    log(`${label} ✗ ${errMsg(e)}`, "err");
+  } finally {
+    busy = false; document.querySelectorAll("button").forEach((b) => (b.disabled = false));
+    await refresh();
+  }
+}
+
+function setAccount(addr) {
+  me = addr;
+  signer = new ethers.JsonRpcSigner(provider, addr); // anvil accounts are unlocked
+  market = new ethers.Contract(addrs.market, MARKET_ABI, signer);
+  weth = new ethers.Contract(addrs.weth, ERC20_ABI, signer);
+  dai = new ethers.Contract(addrs.dai, ERC20_ABI, signer);
+  refresh();
+}
+
+async function ensureAllowance(token, name, amount) {
+  const current = await token.allowance(me, addrs.market);
+  if (current >= amount) return true;
+  const rc = await send(`Approve ${fmt(amount)} ${name}`, () => token.approve(addrs.market, amount));
+  return !!rc;
+}
+
+async function refresh() {
+  if (!market) return;
+  try {
+    const [block, eth, w, d, n] = await Promise.all([
+      provider.getBlock("latest"), provider.getBalance(me), weth.balanceOf(me), dai.balanceOf(me), market.nextOrderId(),
+    ]);
+    $("chainTime").textContent = fmtTime(block.timestamp);
+    $("balEth").textContent = fmt(eth);
+    $("balWeth").textContent = fmt(w);
+    $("balDai").textContent = fmt(d, 2);
+
+    const orders = await Promise.all([...Array(Number(n)).keys()].map((i) => market.getOrder(i)));
+    const openOnly = $("openOnly").checked;
+    const rows = orders.reverse().filter((o) => !openOnly || Number(o.status) === 0).map((o) => {
+      const status = STATUS[Number(o.status)];
+      const mine = o.farmer.toLowerCase() === me.toLowerCase();
+      const unlocksAt = o.createdAt + cancelLock;
+      const locked = BigInt(block.timestamp) < unlocksAt;
+      let actions = "";
+      if (status === "Open") {
+        if (!mine) actions += `<button class="primary" data-fill="${o.id}">Buy</button>`;
+        else actions +=`<button class="danger" data-cancel="${o.id}" title="${locked ? "Unlocks " + fmtTime(unlocksAt) : ""}">${locked ? "🔒 Cancel" : "Cancel"}</button>`;
+      }
+      return `<tr>
+        <td>${o.id}</td>
+        <td class="mono ${mine ? "you" : ""}">${mine ? "you" : short(o.farmer)}</td>
+        <td>${fmt(o.amount)} ETH</td>
+        <td>${o.price.toLocaleString()}</td>
+        <td>${fmt(o.amount * o.price, 2)}</td>
+        <td class="sub">${fmtTime(o.createdAt)}</td>
+        <td><span class="badge ${status}">${status}</span></td>
+        <td>${actions}</td></tr>`;
+    });
+    $("orders").innerHTML = rows.join("") || `<tr><td colspan="8" class="sub">No orders yet.</td></tr>`;
+    if (busy) $("orders").querySelectorAll("button").forEach((b) => (b.disabled = true));
+  } catch (e) {
+    $("chainInfo").textContent = "error: " + errMsg(e);
+  }
+}
+
+function updateTotal() {
+  try {
+    const t = Number($("amount").value) * Number($("price").value);
+    $("total").textContent = isFinite(t) ? t.toLocaleString() : "–";
+  } catch { $("total").textContent = "–"; }
+}
+
+// --- wiring ---
+$("account").onchange = (e) => setAccount(e.target.value);
+$("openOnly").onchange = refresh;
+$("amount").oninput = $("price").oninput = updateTotal;
+
+$("payWith").onclick = (e) => {
+  const v = e.target.dataset?.v; if (!v) return;
+  payWith = v;
+  $("payWith").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
+};
+
+$("placeBtn").onclick = async () => {
+  let amount, price;
+  try { amount = ethers.parseEther($("amount").value.trim()); price = BigInt($("price").value.trim()); }
+  catch { return log("Enter a valid amount and a whole-number price", "err"); }
+  if (payWith === "eth") {
+    await send(`Place order ${fmt(amount)} ETH @ ${price}`, () => market.placeOrderETH(price, { value: amount }));
+  } else {
+    if (!(await ensureAllowance(weth, "WETH", amount))) return;
+    await send(`Place order ${fmt(amount)} WETH @ ${price}`, () => market.placeOrderWETH(amount, price));
+  }
+};
+
+$("orders").onclick = async (e) => {
+  const fillId = e.target.dataset?.fill, cancelId = e.target.dataset?.cancel;
+  if (fillId !== undefined) {
+    const o = await market.getOrder(fillId);
+    if (!(await ensureAllowance(dai, "DAI", o.amount * o.price))) return;
+    await send(`Buy order #${fillId}`, () => market.fill(fillId));
+  } else if (cancelId !== undefined) {
+    await send(`Cancel order #${cancelId}`, () => market.cancel(cancelId));
+  }
+};
+
+$("mintDaiBtn").onclick = () => send("Mint 10,000 DAI", () => dai.mint(me, ethers.parseEther("10000")));
+$("wrapBtn").onclick = () => send("Wrap 1 ETH", () => weth.deposit({ value: ethers.parseEther("1") }));
+$("warpBtn").onclick = async () => {
+  await provider.send("evm_increaseTime", [86400]);
+  await provider.send("evm_mine", []);
+  log("Advanced chain time by 24h", "ok");
+  refresh();
+};
+
+// --- boot ---
+(async () => {
+  try {
+    addrs = await (await fetch("deployments.json", { cache: "no-store" })).json();
+    accounts = await provider.send("eth_accounts", []);
+    const net = await provider.getNetwork();
+    $("chainInfo").innerHTML = `chain ${net.chainId} · market <span class="mono">${short(addrs.market)}</span>`;
+    $("account").innerHTML = accounts.map((a, i) => `<option value="${a}">#${i} ${a}</option>`).join("");
+    setAccount(accounts[0]);
+    const m = new ethers.Contract(addrs.market, MARKET_ABI, provider);
+    [cap, cancelLock] = await Promise.all([m.maxOrderAmount(), m.CANCEL_LOCK()]);
+    $("cap").textContent = fmt(cap);
+    updateTotal();
+    provider.on("block", refresh);
+    log("Connected to anvil");
+  } catch (e) {
+    $("chainInfo").textContent = "can't reach anvil at " + RPC + " — is it running and deployed?";
+    log(errMsg(e), "err");
+  }
+})();
+</script>
+</body>
+</html>
