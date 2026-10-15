@@ -83,6 +83,7 @@ contract FarmersMarket is ReentrancyGuard {
     error OrderNotOpen();
     error NotFarmer();
     error StillLocked(uint256 unlocksAt);
+    error SelfFill();
 
     /// @param weth_ The official wETH contract.
     /// @param stablecoin_ DAI or USDS. Must have 18 decimals, like ETH.
@@ -126,6 +127,8 @@ contract FarmersMarket is ReentrancyGuard {
     /// @notice Buy a whole order. Approve this contract for `amount x price` stablecoin first.
     function fill(uint256 id) external nonReentrant {
         Order storage order = _openOrder(id);
+
+        if (msg.sender == order.farmer) revert SelfFill();
 
         order.status = OrderStatus.Filled;
 
