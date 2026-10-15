@@ -609,4 +609,59 @@ contract FarmersMarketTest is Test {
         assertEq(weth.balanceOf(buyer), 0, "buyer gets no WETH");
         assertEq(weth.balanceOf(farmer), 1 ether, "farmer got their WETH back");
     }
+
+    function test_CancelOneSecondBeforeUnlock_FailsSoBuyerCanStillFill()
+        public
+    {
+        uint256 id = _placeETH(1 ether, PRICE);
+        uint256 cost = market.costOf(id);
+
+        _fundDai(buyer, cost);
+
+        vm.warp(block.timestamp + market.CANCEL_LOCK() - 1);
+        vm.prank(farmer);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                FarmersMarket.StillLocked.selector,
+                block.timestamp + 1
+            )
+        );
+        market.cancel(id);
+
+        vm.prank(buyer);
+        market.fill(id);
+
+        assertEq(dai.balanceOf(buyer), 0, "buyer spent DAI");
+        assertEq(weth.balanceOf(buyer), 1 ether, "buyer got WETH");
+    }
+
+    function testFuzz_ManyBuyers_ExactlyOneWinner(
+        uint256 n,
+        uint256 winner
+    ) public {
+        n = bound(n, 1, 10);
+        winner = bound(winner, 0, n - 1);
+
+        uint256 id = _placeETH(1 ether, PRICE);
+        uint256 cost = market.costOf(id);
+
+        for (uint256 i; i < n; ++i) {
+            address buyerAddr = address(uint160(i + 1));
+            _fundDai(buyerAddr, cost);
+        }
+
+        vm.prank(address(uint160(winner + 1)));
+        market.fill(id);
+
+        for (uint256 i; i < n; ++i) {
+            address buyerAddr = address(uint160(i + 1));
+            if (i == winner) {
+                assertEq(weth.balanceOf(buyerAddr), 1 ether);
+                assertEq(dai.balanceOf(buyerAddr), 0);
+            } else {
+                assertEq(weth.balanceOf(buyerAddr), 0);
+                assertEq(dai.balanceOf(buyerAddr), cost);
+            }
+        }
+    }
 }
