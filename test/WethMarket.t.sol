@@ -31,10 +31,7 @@ contract WethMarketTest is MarketTestBase {
         weth.deposit{value: amount}();
     }
 
-    function _placeEth(
-        uint256 amount,
-        uint256 price_
-    ) internal returns (uint256 id) {
+    function _placeEth(uint256 amount, uint256 price_) internal returns (uint256 id) {
         vm.prank(farmer);
         id = wethMarket.placeOrderEth{value: amount}(price_);
     }
@@ -46,16 +43,8 @@ contract WethMarketTest is MarketTestBase {
     function test_pair_costInDai() public view {
         assertEq(market.SCALE_MUL(), 1);
         assertEq(market.SCALE_DIV(), 1);
-        assertEq(
-            market.quoteCost(1 ether, 3000),
-            3000 ether,
-            "1 ETH @ 3000 = 3000 DAI"
-        );
-        assertEq(
-            market.quoteCost(0.01 ether, 3000),
-            30 ether,
-            "0.01 ETH @ 3000 = 30 DAI"
-        );
+        assertEq(market.quoteCost(1 ether, 3000), 3000 ether, "1 ETH @ 3000 = 3000 DAI");
+        assertEq(market.quoteCost(0.01 ether, 3000), 30 ether, "0.01 ETH @ 3000 = 30 DAI");
     }
 
     function test_constructor_setsWeth() public view {
@@ -140,7 +129,7 @@ contract WethMarketTest is MarketTestBase {
 
     function test_rawEthTransferIsRejected() public {
         vm.prank(farmer);
-        (bool ok, ) = address(market).call{value: 1 ether}("");
+        (bool ok,) = address(market).call{value: 1 ether}("");
         assertFalse(ok);
     }
 }

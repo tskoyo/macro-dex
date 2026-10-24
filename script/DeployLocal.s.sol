@@ -32,11 +32,7 @@ contract DeployLocal is Script {
         string memory json = "deployments";
         vm.serializeAddress(json, "weth", address(weth));
         vm.serializeAddress(json, "dai", address(dai));
-        string memory out = vm.serializeAddress(
-            json,
-            "market",
-            address(market)
-        );
+        string memory out = vm.serializeAddress(json, "market", address(market));
         vm.writeJson(out, "./ui/deployments.json");
 
         console.log("MockWETH  ", address(weth));

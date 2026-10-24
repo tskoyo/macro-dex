@@ -2,12 +2,8 @@
 pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {
-    SafeERC20
-} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {
-    ReentrancyGuard
-} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title Farmer's Market (generic pair)
 /// @notice Farmers lock a "base" token at a fixed whole-number price in a "quote" token.
@@ -78,13 +74,7 @@ contract Market is ReentrancyGuard {
     // Events (the public fill history)
     // ------------------------------------------------------------------
 
-    event OrderPlaced(
-        uint256 indexed id,
-        address indexed farmer,
-        uint256 amount,
-        uint256 price,
-        uint256 createdAt
-    );
+    event OrderPlaced(uint256 indexed id, address indexed farmer, uint256 amount, uint256 price, uint256 createdAt);
     event OrderFilled(
         uint256 indexed id,
         address indexed farmer,
@@ -135,15 +125,15 @@ contract Market is ReentrancyGuard {
         uint256 amountStep_,
         uint256 cancelLock_
     ) {
-        if (
-            address(baseToken_) == address(0) ||
-            address(quoteToken_) == address(0)
-        ) revert ZeroAddress();
+        if (address(baseToken_) == address(0) || address(quoteToken_) == address(0)) {
+            revert ZeroAddress();
+        }
         if (address(baseToken_) == address(quoteToken_)) revert SameToken();
 
         // 10**36 is already far past anything real; this keeps the scale factors sane.
-        if (baseDecimals_ > 36 || quoteDecimals_ > 36)
+        if (baseDecimals_ > 36 || quoteDecimals_ > 36) {
             revert DecimalsOutOfRange();
+        }
 
         // Deploy-time guard against a fat-fingered decimals argument.
         _checkReportedDecimals(address(baseToken_), baseDecimals_);
@@ -169,8 +159,9 @@ contract Market is ReentrancyGuard {
         // refuse to exist at all.
         if (amountStep_ % div != 0) revert StepWouldRound(amountStep_, div);
 
-        if (cancelLock_ < MIN_CANCEL_LOCK || cancelLock_ > MAX_CANCEL_LOCK)
+        if (cancelLock_ < MIN_CANCEL_LOCK || cancelLock_ > MAX_CANCEL_LOCK) {
             revert InvalidCancelLock();
+        }
 
         BASE_TOKEN = baseToken_;
         QUOTE_TOKEN = quoteToken_;
@@ -189,10 +180,7 @@ contract Market is ReentrancyGuard {
     /// @notice Place an order with base tokens you already hold. Approve this contract first.
     /// @param amount Base token amount, in its smallest unit. Multiple of AMOUNT_STEP.
     /// @param price  Whole quote units per 1 whole base unit.
-    function placeOrder(
-        uint256 amount,
-        uint256 price
-    ) external nonReentrant returns (uint256 id) {
+    function placeOrder(uint256 amount, uint256 price) external nonReentrant returns (uint256 id) {
         _checkOrder(amount, price);
 
         // Measure what actually arrived. A fee-on-transfer or rebasing token would
@@ -201,8 +189,9 @@ contract Market is ReentrancyGuard {
         uint256 balanceBefore = BASE_TOKEN.balanceOf(address(this));
         BASE_TOKEN.safeTransferFrom(msg.sender, address(this), amount);
         uint256 received = BASE_TOKEN.balanceOf(address(this)) - balanceBefore;
-        if (received != amount)
+        if (received != amount) {
             revert UnexpectedTransferAmount(amount, received);
+        }
 
         id = _createOrder(msg.sender, amount, price);
     }
@@ -225,15 +214,7 @@ contract Market is ReentrancyGuard {
         uint256 price = order.price;
         uint256 cost = _costOf(amount, price);
 
-        emit OrderFilled(
-            id,
-            farmer,
-            msg.sender,
-            amount,
-            price,
-            cost,
-            block.timestamp
-        );
+        emit OrderFilled(id, farmer, msg.sender, amount, price, cost, block.timestamp);
 
         // 2. Then move tokens. The payment goes straight from buyer to farmer.
         QUOTE_TOKEN.safeTransferFrom(msg.sender, farmer, cost);
@@ -271,10 +252,7 @@ contract Market is ReentrancyGuard {
     }
 
     /// @notice Price an order before placing it, so the frontend can show the exact number.
-    function quoteCost(
-        uint256 amount,
-        uint256 price
-    ) external view returns (uint256) {
+    function quoteCost(uint256 amount, uint256 price) external view returns (uint256) {
         _checkOrder(amount, price);
         return _costOf(amount, price);
     }
@@ -290,10 +268,7 @@ contract Market is ReentrancyGuard {
     ///          0.5e18 * 2500 / 1e12 = 1250e6    = 1,250 USDC
     ///      The divide is exact for every valid order, because the constructor
     ///      refused to deploy unless SCALE_DIV divides AMOUNT_STEP exactly.
-    function _costOf(
-        uint256 amount,
-        uint256 price
-    ) internal view returns (uint256) {
+    function _costOf(uint256 amount, uint256 price) internal view returns (uint256) {
         return (amount * price * SCALE_MUL) / SCALE_DIV;
     }
 
@@ -308,11 +283,7 @@ contract Market is ReentrancyGuard {
         if (gross > type(uint256).max / SCALE_MUL) revert CostTooLarge();
     }
 
-    function _createOrder(
-        address farmer,
-        uint256 amount,
-        uint256 price
-    ) internal returns (uint256 id) {
+    function _createOrder(address farmer, uint256 amount, uint256 price) internal returns (uint256 id) {
         id = nextOrderId++;
         _orders[id] = Order({
             id: id,
@@ -335,17 +306,13 @@ contract Market is ReentrancyGuard {
     ///      decimals() is optional in ERC-20, and USDT declares it as uint256 rather than
     ///      uint8, so we use a low-level call and read 32 bytes. A token that doesn't
     ///      answer is tolerated; a token that answers differently is rejected.
-    function _checkReportedDecimals(
-        address token,
-        uint8 expected
-    ) private view {
-        (bool ok, bytes memory data) = token.staticcall(
-            abi.encodeWithSignature("decimals()")
-        );
+    function _checkReportedDecimals(address token, uint8 expected) private view {
+        (bool ok, bytes memory data) = token.staticcall(abi.encodeWithSignature("decimals()"));
         if (ok && data.length >= 32) {
             uint256 reported = abi.decode(data, (uint256));
-            if (reported != expected)
+            if (reported != expected) {
                 revert DecimalsMismatch(token, expected, reported);
+            }
         }
     }
 

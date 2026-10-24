@@ -3,9 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {
-    IERC20Errors
-} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {Market} from "../src/Market.sol";
 import {MockToken} from "../src/Mocks.sol";
 
@@ -67,24 +65,14 @@ abstract contract MarketTestBase is Test {
         price = price_;
         baseToken = new MockToken(baseSymbol, baseSymbol, baseDecimals_);
         quote = new MockToken(quoteSymbol, quoteSymbol, quoteDecimals_);
-        market = new Market(
-            baseToken,
-            quote,
-            baseDecimals_,
-            quoteDecimals_,
-            step_,
-            LOCK
-        );
+        market = new Market(baseToken, quote, baseDecimals_, quoteDecimals_, step_, LOCK);
     }
 
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
-    function createOrder(
-        uint256 amount,
-        uint256 price_
-    ) internal returns (uint256 id) {
+    function createOrder(uint256 amount, uint256 price_) internal returns (uint256 id) {
         _fundBase(farmer, amount);
         vm.prank(farmer);
         id = market.placeOrder(amount, price_);
@@ -107,13 +95,8 @@ abstract contract MarketTestBase is Test {
     }
 
     /// @dev The cost worked out from decimals directly, not from the market's scale factors.
-    function _expectedCost(
-        uint256 amount,
-        uint256 price_
-    ) internal view returns (uint256) {
-        return
-            (amount * price_ * 10 ** uint256(quoteDecimals)) /
-            10 ** uint256(baseDecimals);
+    function _expectedCost(uint256 amount, uint256 price_) internal view returns (uint256) {
+        return (amount * price_ * 10 ** uint256(quoteDecimals)) / 10 ** uint256(baseDecimals);
     }
 
     // ------------------------------------------------------------------
@@ -130,92 +113,41 @@ abstract contract MarketTestBase is Test {
         assertEq(market.nextOrderId(), 0);
 
         if (quoteDecimals >= baseDecimals) {
-            assertEq(
-                market.SCALE_MUL(),
-                10 ** uint256(quoteDecimals - baseDecimals)
-            );
+            assertEq(market.SCALE_MUL(), 10 ** uint256(quoteDecimals - baseDecimals));
             assertEq(market.SCALE_DIV(), 1);
         } else {
             assertEq(market.SCALE_MUL(), 1);
-            assertEq(
-                market.SCALE_DIV(),
-                10 ** uint256(baseDecimals - quoteDecimals)
-            );
+            assertEq(market.SCALE_DIV(), 10 ** uint256(baseDecimals - quoteDecimals));
         }
     }
 
     function test_constructor_revertsOnZeroBase() public {
         vm.expectRevert(Market.ZeroAddress.selector);
-        new Market(
-            IERC20(address(0)),
-            quote,
-            baseDecimals,
-            quoteDecimals,
-            step,
-            LOCK
-        );
+        new Market(IERC20(address(0)), quote, baseDecimals, quoteDecimals, step, LOCK);
     }
 
     function test_constructor_revertsOnZeroQuote() public {
         vm.expectRevert(Market.ZeroAddress.selector);
-        new Market(
-            baseToken,
-            IERC20(address(0)),
-            baseDecimals,
-            quoteDecimals,
-            step,
-            LOCK
-        );
+        new Market(baseToken, IERC20(address(0)), baseDecimals, quoteDecimals, step, LOCK);
     }
 
     function test_constructor_revertsOnSameToken() public {
         vm.expectRevert(Market.SameToken.selector);
-        new Market(
-            baseToken,
-            baseToken,
-            baseDecimals,
-            baseDecimals,
-            step,
-            LOCK
-        );
+        new Market(baseToken, baseToken, baseDecimals, baseDecimals, step, LOCK);
     }
 
     function test_constructor_revertsOnWrongBaseDecimals() public {
         vm.expectRevert(
-            abi.encodeWithSelector(
-                Market.DecimalsMismatch.selector,
-                address(baseToken),
-                baseDecimals + 1,
-                baseDecimals
-            )
+            abi.encodeWithSelector(Market.DecimalsMismatch.selector, address(baseToken), baseDecimals + 1, baseDecimals)
         );
-        new Market(
-            baseToken,
-            quote,
-            baseDecimals + 1,
-            quoteDecimals,
-            step,
-            LOCK
-        );
+        new Market(baseToken, quote, baseDecimals + 1, quoteDecimals, step, LOCK);
     }
 
     function test_constructor_revertsOnWrongQuoteDecimals() public {
         vm.expectRevert(
-            abi.encodeWithSelector(
-                Market.DecimalsMismatch.selector,
-                address(quote),
-                quoteDecimals + 1,
-                quoteDecimals
-            )
+            abi.encodeWithSelector(Market.DecimalsMismatch.selector, address(quote), quoteDecimals + 1, quoteDecimals)
         );
-        new Market(
-            baseToken,
-            quote,
-            baseDecimals,
-            quoteDecimals + 1,
-            step,
-            LOCK
-        );
+        new Market(baseToken, quote, baseDecimals, quoteDecimals + 1, step, LOCK);
     }
 
     function test_constructor_revertsOnZeroStep() public {
@@ -228,24 +160,10 @@ abstract contract MarketTestBase is Test {
         uint256 maxLock = market.MAX_CANCEL_LOCK();
 
         vm.expectRevert(Market.InvalidCancelLock.selector);
-        new Market(
-            baseToken,
-            quote,
-            baseDecimals,
-            quoteDecimals,
-            step,
-            minLock - 1
-        );
+        new Market(baseToken, quote, baseDecimals, quoteDecimals, step, minLock - 1);
 
         vm.expectRevert(Market.InvalidCancelLock.selector);
-        new Market(
-            baseToken,
-            quote,
-            baseDecimals,
-            quoteDecimals,
-            step,
-            maxLock + 1
-        );
+        new Market(baseToken, quote, baseDecimals, quoteDecimals, step, maxLock + 1);
     }
 
     // ------------------------------------------------------------------
@@ -313,10 +231,7 @@ abstract contract MarketTestBase is Test {
         uint256 maxPrice = type(uint256).max / market.SCALE_MUL() / unit;
 
         uint256 id = createOrder(unit, maxPrice);
-        assertEq(
-            market.costOf(id),
-            (unit * maxPrice * market.SCALE_MUL()) / market.SCALE_DIV()
-        );
+        assertEq(market.costOf(id), (unit * maxPrice * market.SCALE_MUL()) / market.SCALE_DIV());
 
         _fundBase(farmer, unit);
         vm.expectRevert(Market.CostTooLarge.selector);
@@ -328,12 +243,7 @@ abstract contract MarketTestBase is Test {
         _mintBase(farmer, unit);
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IERC20Errors.ERC20InsufficientAllowance.selector,
-                address(market),
-                0,
-                unit
-            )
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(market), 0, unit)
         );
         vm.prank(farmer);
         market.placeOrder(unit, price);
@@ -343,14 +253,7 @@ abstract contract MarketTestBase is Test {
         vm.prank(farmer);
         baseToken.approve(address(market), unit);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IERC20Errors.ERC20InsufficientBalance.selector,
-                farmer,
-                0,
-                unit
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, farmer, 0, unit));
         vm.prank(farmer);
         market.placeOrder(unit, price);
     }
@@ -372,11 +275,7 @@ abstract contract MarketTestBase is Test {
         uint256 amount = steps * step;
 
         uint256 cost = market.quoteCost(amount, price_);
-        assertEq(
-            cost * 10 ** uint256(baseDecimals),
-            amount * price_ * 10 ** uint256(quoteDecimals),
-            "no dust lost"
-        );
+        assertEq(cost * 10 ** uint256(baseDecimals), amount * price_ * 10 ** uint256(quoteDecimals), "no dust lost");
     }
 
     // ------------------------------------------------------------------
@@ -427,15 +326,7 @@ abstract contract MarketTestBase is Test {
         _fundQuote(buyer, cost);
 
         vm.expectEmit(address(market));
-        emit Market.OrderFilled(
-            id,
-            farmer,
-            buyer,
-            unit,
-            price,
-            cost,
-            block.timestamp
-        );
+        emit Market.OrderFilled(id, farmer, buyer, unit, price, cost, block.timestamp);
         vm.prank(buyer);
         market.fill(id);
     }
@@ -478,9 +369,7 @@ abstract contract MarketTestBase is Test {
         market.fill(id);
     }
 
-    function test_fill_revertsWithInsufficientAllowance_andOrderStaysOpen()
-        public
-    {
+    function test_fill_revertsWithInsufficientAllowance_andOrderStaysOpen() public {
         uint256 id = createOrder(unit, price);
         uint256 cost = market.costOf(id);
         quote.mint(buyer, cost);
@@ -488,21 +377,12 @@ abstract contract MarketTestBase is Test {
         quote.approve(address(market), cost - 1);
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IERC20Errors.ERC20InsufficientAllowance.selector,
-                address(market),
-                cost - 1,
-                cost
-            )
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(market), cost - 1, cost)
         );
         vm.prank(buyer);
         market.fill(id);
 
-        assertEq(
-            uint8(_status(id)),
-            uint8(Market.OrderStatus.Open),
-            "status change rolled back"
-        );
+        assertEq(uint8(_status(id)), uint8(Market.OrderStatus.Open), "status change rolled back");
         assertEq(baseToken.balanceOf(address(market)), unit);
     }
 
@@ -513,14 +393,7 @@ abstract contract MarketTestBase is Test {
         vm.prank(buyer);
         quote.approve(address(market), cost);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IERC20Errors.ERC20InsufficientBalance.selector,
-                buyer,
-                cost - 1,
-                cost
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, buyer, cost - 1, cost));
         vm.prank(buyer);
         market.fill(id);
     }
@@ -544,11 +417,7 @@ abstract contract MarketTestBase is Test {
         market.fill(b);
 
         assertEq(uint8(_status(a)), uint8(Market.OrderStatus.Open));
-        assertEq(
-            baseToken.balanceOf(address(market)),
-            unit,
-            "order a's base still escrowed"
-        );
+        assertEq(baseToken.balanceOf(address(market)), unit, "order a's base still escrowed");
         assertEq(baseToken.balanceOf(buyer), 2 * unit);
     }
 
@@ -583,17 +452,13 @@ abstract contract MarketTestBase is Test {
         uint256 id = createOrder(unit, price);
         uint256 unlocksAt = block.timestamp + market.CANCEL_LOCK();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(Market.StillLocked.selector, unlocksAt)
-        );
+        vm.expectRevert(abi.encodeWithSelector(Market.StillLocked.selector, unlocksAt));
         vm.prank(farmer);
         market.cancel(id);
 
         // One second before unlock is still locked.
         vm.warp(unlocksAt - 1);
-        vm.expectRevert(
-            abi.encodeWithSelector(Market.StillLocked.selector, unlocksAt)
-        );
+        vm.expectRevert(abi.encodeWithSelector(Market.StillLocked.selector, unlocksAt));
         vm.prank(farmer);
         market.cancel(id);
     }
@@ -669,11 +534,7 @@ abstract contract MarketTestBase is Test {
         market.fill(id);
 
         assertEq(quote.balanceOf(buyer), cost, "buyer keeps quote");
-        assertEq(
-            quote.allowance(buyer, address(market)),
-            cost,
-            "buyer's approval untouched"
-        );
+        assertEq(quote.allowance(buyer, address(market)), cost, "buyer's approval untouched");
         assertEq(baseToken.balanceOf(buyer), 0, "buyer gets no base");
         assertEq(baseToken.balanceOf(bot), unit, "bot got the order");
     }
@@ -693,22 +554,12 @@ abstract contract MarketTestBase is Test {
         market.fill(id);
 
         assertEq(quote.balanceOf(buyer), cost, "buyer keeps quote");
-        assertEq(
-            quote.allowance(buyer, address(market)),
-            cost,
-            "buyer's approval untouched"
-        );
+        assertEq(quote.allowance(buyer, address(market)), cost, "buyer's approval untouched");
         assertEq(baseToken.balanceOf(buyer), 0, "buyer gets no base");
-        assertEq(
-            baseToken.balanceOf(farmer),
-            unit,
-            "farmer got their base back"
-        );
+        assertEq(baseToken.balanceOf(farmer), unit, "farmer got their base back");
     }
 
-    function test_CancelOneSecondBeforeUnlock_FailsSoBuyerCanStillFill()
-        public
-    {
+    function test_CancelOneSecondBeforeUnlock_FailsSoBuyerCanStillFill() public {
         uint256 id = createOrder(unit, price);
         uint256 cost = market.costOf(id);
 
@@ -716,12 +567,7 @@ abstract contract MarketTestBase is Test {
 
         vm.warp(block.timestamp + market.CANCEL_LOCK() - 1);
         vm.prank(farmer);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Market.StillLocked.selector,
-                block.timestamp + 1
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Market.StillLocked.selector, block.timestamp + 1));
         market.cancel(id);
 
         vm.prank(buyer);
@@ -731,10 +577,7 @@ abstract contract MarketTestBase is Test {
         assertEq(baseToken.balanceOf(buyer), unit, "buyer got base");
     }
 
-    function testFuzz_ManyBuyers_ExactlyOneWinner(
-        uint256 n,
-        uint256 winner
-    ) public {
+    function testFuzz_ManyBuyers_ExactlyOneWinner(uint256 n, uint256 winner) public {
         n = bound(n, 1, 10);
         winner = bound(winner, 0, n - 1);
 
