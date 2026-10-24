@@ -21,14 +21,14 @@ contract MockWETH is ERC20 {
 /// @notice TEST ONLY. A normal token with whatever decimals we want.
 ///         Use 18 for DAI, 6 for USDC, 8 for wBTC. Anyone can mint.
 contract MockToken is ERC20 {
-    uint8 private immutable _decimals;
+    uint8 private immutable _DECIMALS;
 
     constructor(string memory name_, string memory symbol_, uint8 decimals_) ERC20(name_, symbol_) {
-        _decimals = decimals_;
+        _DECIMALS = decimals_;
     }
 
     function decimals() public view override returns (uint8) {
-        return _decimals;
+        return _DECIMALS;
     }
 
     function mint(address to, uint256 amount) external {

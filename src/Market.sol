@@ -48,24 +48,24 @@ contract Market is ReentrancyGuard {
     uint256 public constant MAX_CANCEL_LOCK = 7 days;
 
     /// @notice The token the farmer sells (wETH, wBTC, ...).
-    IERC20 public immutable baseToken;
+    IERC20 public immutable BASE_TOKEN;
     /// @notice The token the buyer pays with (DAI, USDC, USDT, ...).
-    IERC20 public immutable quoteToken;
+    IERC20 public immutable QUOTE_TOKEN;
 
-    uint8 public immutable baseDecimals;
-    uint8 public immutable quoteDecimals;
+    uint8 public immutable BASE_DECIMALS;
+    uint8 public immutable QUOTE_DECIMALS;
 
-    /// @notice cost = amount * price * scaleMul / scaleDiv.
+    /// @notice cost = amount * price * SCALE_MUL / SCALE_DIV.
     ///         Exactly one of these is always 1, so there is at most one multiply
     ///         and at most one divide. See _costOf for why the divide never rounds.
-    uint256 public immutable scaleMul;
-    uint256 public immutable scaleDiv;
+    uint256 public immutable SCALE_MUL;
+    uint256 public immutable SCALE_DIV;
 
     /// @notice Amounts must be a whole multiple of this, in the base token's smallest unit.
-    uint256 public immutable amountStep;
+    uint256 public immutable AMOUNT_STEP;
 
     /// @notice How long a farmer must wait before they may cancel.
-    uint256 public immutable cancelLock;
+    uint256 public immutable CANCEL_LOCK;
 
     // ------------------------------------------------------------------
     // Storage
@@ -161,9 +161,9 @@ contract Market is ReentrancyGuard {
         if (amountStep_ == 0) revert InvalidStep();
 
         // THE IMPORTANT CHECK.
-        // Every valid amount is k * amountStep. So every cost is
-        //     k * amountStep * price * mul / div.
-        // If div divides amountStep exactly, the remainder is always zero,
+        // Every valid amount is k * AMOUNT_STEP. So every cost is
+        //     k * AMOUNT_STEP * price * mul / div.
+        // If div divides AMOUNT_STEP exactly, the remainder is always zero,
         // for every k and every price. No rounding, ever. If it doesn't divide
         // exactly, this market would quietly lose dust on some trades, so we
         // refuse to exist at all.
@@ -172,14 +172,14 @@ contract Market is ReentrancyGuard {
         if (cancelLock_ < MIN_CANCEL_LOCK || cancelLock_ > MAX_CANCEL_LOCK)
             revert InvalidCancelLock();
 
-        baseToken = baseToken_;
-        quoteToken = quoteToken_;
-        baseDecimals = baseDecimals_;
-        quoteDecimals = quoteDecimals_;
-        scaleMul = mul;
-        scaleDiv = div;
-        amountStep = amountStep_;
-        cancelLock = cancelLock_;
+        BASE_TOKEN = baseToken_;
+        QUOTE_TOKEN = quoteToken_;
+        BASE_DECIMALS = baseDecimals_;
+        QUOTE_DECIMALS = quoteDecimals_;
+        SCALE_MUL = mul;
+        SCALE_DIV = div;
+        AMOUNT_STEP = amountStep_;
+        CANCEL_LOCK = cancelLock_;
     }
 
     // ------------------------------------------------------------------
@@ -187,7 +187,7 @@ contract Market is ReentrancyGuard {
     // ------------------------------------------------------------------
 
     /// @notice Place an order with base tokens you already hold. Approve this contract first.
-    /// @param amount Base token amount, in its smallest unit. Multiple of amountStep.
+    /// @param amount Base token amount, in its smallest unit. Multiple of AMOUNT_STEP.
     /// @param price  Whole quote units per 1 whole base unit.
     function placeOrder(
         uint256 amount,
@@ -198,9 +198,9 @@ contract Market is ReentrancyGuard {
         // Measure what actually arrived. A fee-on-transfer or rebasing token would
         // deliver less than `amount`, which would leave the contract short later.
         // We refuse those tokens here rather than discover the shortfall at cancel time.
-        uint256 balanceBefore = baseToken.balanceOf(address(this));
-        baseToken.safeTransferFrom(msg.sender, address(this), amount);
-        uint256 received = baseToken.balanceOf(address(this)) - balanceBefore;
+        uint256 balanceBefore = BASE_TOKEN.balanceOf(address(this));
+        BASE_TOKEN.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = BASE_TOKEN.balanceOf(address(this)) - balanceBefore;
         if (received != amount)
             revert UnexpectedTransferAmount(amount, received);
 
@@ -236,22 +236,22 @@ contract Market is ReentrancyGuard {
         );
 
         // 2. Then move tokens. The payment goes straight from buyer to farmer.
-        quoteToken.safeTransferFrom(msg.sender, farmer, cost);
-        baseToken.safeTransfer(msg.sender, amount);
+        QUOTE_TOKEN.safeTransferFrom(msg.sender, farmer, cost);
+        BASE_TOKEN.safeTransfer(msg.sender, amount);
     }
 
-    /// @notice Take back an unfilled order. Only the farmer, and only after cancelLock.
+    /// @notice Take back an unfilled order. Only the farmer, and only after CANCEL_LOCK.
     function cancel(uint256 id) external nonReentrant {
         Order storage order = _openOrder(id);
         if (msg.sender != order.farmer) revert NotFarmer();
 
-        uint256 unlocksAt = uint256(order.createdAt) + cancelLock;
+        uint256 unlocksAt = uint256(order.createdAt) + CANCEL_LOCK;
         if (block.timestamp < unlocksAt) revert StillLocked(unlocksAt);
 
         order.status = OrderStatus.Cancelled;
         emit OrderCancelled(id, order.farmer);
 
-        baseToken.safeTransfer(order.farmer, order.amount);
+        BASE_TOKEN.safeTransfer(order.farmer, order.amount);
     }
 
     // ------------------------------------------------------------------
@@ -283,29 +283,29 @@ contract Market is ReentrancyGuard {
     // Internal helpers
     // ------------------------------------------------------------------
 
-    /// @dev cost = amount * price * scaleMul / scaleDiv.
-    ///      Example, wETH/DAI (18 and 18): scaleMul = 1, scaleDiv = 1.
+    /// @dev cost = amount * price * SCALE_MUL / SCALE_DIV.
+    ///      Example, wETH/DAI (18 and 18): SCALE_MUL = 1, SCALE_DIV = 1.
     ///          0.5e18 * 2500 = 1250e18          = 1,250 DAI
-    ///      Example, wETH/USDC (18 and 6): scaleMul = 1, scaleDiv = 1e12.
+    ///      Example, wETH/USDC (18 and 6): SCALE_MUL = 1, SCALE_DIV = 1e12.
     ///          0.5e18 * 2500 / 1e12 = 1250e6    = 1,250 USDC
     ///      The divide is exact for every valid order, because the constructor
-    ///      refused to deploy unless scaleDiv divides amountStep exactly.
+    ///      refused to deploy unless SCALE_DIV divides AMOUNT_STEP exactly.
     function _costOf(
         uint256 amount,
         uint256 price
     ) internal view returns (uint256) {
-        return (amount * price * scaleMul) / scaleDiv;
+        return (amount * price * SCALE_MUL) / SCALE_DIV;
     }
 
     /// @dev Validates an order and guarantees the cost arithmetic can never overflow.
     ///      This matters because an order that is placed but un-fillable would lock
     ///      the farmer's tokens until the cancel window opens.
     function _checkOrder(uint256 amount, uint256 price) internal view {
-        if (amount == 0 || amount % amountStep != 0) revert InvalidAmount();
+        if (amount == 0 || amount % AMOUNT_STEP != 0) revert InvalidAmount();
         if (price == 0) revert InvalidPrice();
         if (price > type(uint256).max / amount) revert CostTooLarge();
         uint256 gross = amount * price;
-        if (gross > type(uint256).max / scaleMul) revert CostTooLarge();
+        if (gross > type(uint256).max / SCALE_MUL) revert CostTooLarge();
     }
 
     function _createOrder(

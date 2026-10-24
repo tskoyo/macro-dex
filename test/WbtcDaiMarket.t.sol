@@ -13,8 +13,8 @@ contract WbtcDaiMarketTest is MarketTestBase {
     }
 
     function test_pair_scaleFactors() public view {
-        assertEq(market.scaleMul(), 1e10);
-        assertEq(market.scaleDiv(), 1);
+        assertEq(market.SCALE_MUL(), 1e10);
+        assertEq(market.SCALE_DIV(), 1);
     }
 
     function test_pair_costInDai() public view {
@@ -28,7 +28,7 @@ contract WbtcDaiMarketTest is MarketTestBase {
     }
 
     /// @dev This price passes the first overflow check (amount * price fits), but
-    ///      multiplying by scaleMul would overflow. In a 1:1 market it would be fine.
+    ///      multiplying by SCALE_MUL would overflow. In a 1:1 market it would be fine.
     function test_placeOrder_revertsWhenScaleMulWouldOverflow() public {
         uint256 p = type(uint256).max / unit;
 

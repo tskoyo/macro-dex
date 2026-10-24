@@ -131,7 +131,7 @@ const RPC = "http://127.0.0.1:8545";
 const STATUS = ["Open", "Filled", "Cancelled"];
 
 const MARKET_ABI = [
-  "function placeOrderETH(uint256 price) payable returns (uint256)",
+  "function placeOrderEth(uint256 price) payable returns (uint256)",
   "function placeOrderWETH(uint256 amount, uint256 price) returns (uint256)",
   "function fill(uint256 id)",
   "function cancel(uint256 id)",
@@ -276,7 +276,7 @@ $("placeBtn").onclick = async () => {
   try { amount = ethers.parseEther($("amount").value.trim()); price = BigInt($("price").value.trim()); }
   catch { return log("Enter a valid amount and a whole-number price", "err"); }
   if (payWith === "eth") {
-    await send(`Place order ${fmt(amount)} ETH @ ${price}`, () => market.placeOrderETH(price, { value: amount }));
+    await send(`Place order ${fmt(amount)} ETH @ ${price}`, () => market.placeOrderEth(price, { value: amount }));
   } else {
     if (!(await ensureAllowance(weth, "WETH", amount))) return;
     await send(`Place order ${fmt(amount)} WETH @ ${price}`, () => market.placeOrderWETH(amount, price));

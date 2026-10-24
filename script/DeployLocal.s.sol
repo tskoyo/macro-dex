@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Script, console} from "forge-std/Script.sol";
-import {WethMarket, IWETH} from "../src/WethMarket.sol";
+import {WethMarket} from "../src/WethMarket.sol";
 import {MockWETH, MockToken} from "../src/Mocks.sol";
 
 /// @notice LOCAL ONLY. Deploys mocks + WethMarket to anvil, funds test accounts with DAI,
@@ -13,7 +13,7 @@ contract DeployLocal is Script {
 
         MockWETH weth = new MockWETH();
         MockToken dai = new MockToken("Dai Stablecoin (mock)", "DAI", 18);
-        WethMarket market = new WethMarket(IWETH(address(weth)), dai, 18, 0.01 ether, 24 hours);
+        WethMarket market = new WethMarket(weth, dai, 18, 0.01 ether, 24 hours);
 
         // Give the first 5 anvil accounts 1,000,000 DAI each.
         address[5] memory accounts = [
@@ -32,7 +32,11 @@ contract DeployLocal is Script {
         string memory json = "deployments";
         vm.serializeAddress(json, "weth", address(weth));
         vm.serializeAddress(json, "dai", address(dai));
-        string memory out = vm.serializeAddress(json, "market", address(market));
+        string memory out = vm.serializeAddress(
+            json,
+            "market",
+            address(market)
+        );
         vm.writeJson(out, "./ui/deployments.json");
 
         console.log("MockWETH  ", address(weth));

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Market} from "../src/Market.sol";
-import {WethMarket, IWETH} from "../src/WethMarket.sol";
+import {WethMarket} from "../src/WethMarket.sol";
 import {MockWETH, MockToken} from "../src/Mocks.sol";
 import {MarketTestBase} from "./MarketTestBase.sol";
 
@@ -19,7 +20,7 @@ contract WethMarketTest is MarketTestBase {
 
         weth = new MockWETH();
         quote = new MockToken("Dai Stablecoin (mock)", "DAI", 18);
-        wethMarket = new WethMarket(IWETH(address(weth)), quote, 18, step, LOCK);
+        wethMarket = new WethMarket(weth, quote, 18, step, LOCK);
         baseToken = weth;
         market = wethMarket;
     }
@@ -30,12 +31,12 @@ contract WethMarketTest is MarketTestBase {
         weth.deposit{value: amount}();
     }
 
-    function _placeETH(
+    function _placeEth(
         uint256 amount,
         uint256 price_
     ) internal returns (uint256 id) {
         vm.prank(farmer);
-        id = wethMarket.placeOrderETH{value: amount}(price_);
+        id = wethMarket.placeOrderEth{value: amount}(price_);
     }
 
     // ------------------------------------------------------------------
@@ -43,29 +44,37 @@ contract WethMarketTest is MarketTestBase {
     // ------------------------------------------------------------------
 
     function test_pair_costInDai() public view {
-        assertEq(market.scaleMul(), 1);
-        assertEq(market.scaleDiv(), 1);
-        assertEq(market.quoteCost(1 ether, 3000), 3000 ether, "1 ETH @ 3000 = 3000 DAI");
-        assertEq(market.quoteCost(0.01 ether, 3000), 30 ether, "0.01 ETH @ 3000 = 30 DAI");
+        assertEq(market.SCALE_MUL(), 1);
+        assertEq(market.SCALE_DIV(), 1);
+        assertEq(
+            market.quoteCost(1 ether, 3000),
+            3000 ether,
+            "1 ETH @ 3000 = 3000 DAI"
+        );
+        assertEq(
+            market.quoteCost(0.01 ether, 3000),
+            30 ether,
+            "0.01 ETH @ 3000 = 30 DAI"
+        );
     }
 
     function test_constructor_setsWeth() public view {
-        assertEq(address(wethMarket.weth()), address(weth));
+        assertEq(address(wethMarket.WETH()), address(weth));
     }
 
     function test_constructor_revertsOnZeroWeth() public {
         vm.expectRevert(Market.ZeroAddress.selector);
-        new WethMarket(IWETH(address(0)), quote, 18, step, LOCK);
+        new WethMarket(IERC20(address(0)), quote, 18, step, LOCK);
     }
 
     // ------------------------------------------------------------------
-    // placeOrderETH
+    // placeOrderEth
     // ------------------------------------------------------------------
 
     function test_placeOrderETH_wrapsEthIntoWeth() public {
         uint256 farmerEthBefore = farmer.balance;
 
-        uint256 id = _placeETH(1 ether, price);
+        uint256 id = _placeEth(1 ether, price);
 
         assertEq(farmer.balance, farmerEthBefore - 1 ether, "farmer ETH spent");
         assertEq(address(market).balance, 0, "market holds no raw ETH");
@@ -83,31 +92,31 @@ contract WethMarketTest is MarketTestBase {
     function test_placeOrderETH_emitsOrderPlaced() public {
         vm.expectEmit(address(market));
         emit Market.OrderPlaced(0, farmer, 1 ether, price, block.timestamp);
-        _placeETH(1 ether, price);
+        _placeEth(1 ether, price);
     }
 
     function test_placeOrderETH_revertsOnZeroAmount() public {
         vm.expectRevert(Market.InvalidAmount.selector);
-        _placeETH(0, price);
+        _placeEth(0, price);
     }
 
     function test_placeOrderETH_revertsWhenAmountNotMultipleOfStep() public {
         vm.expectRevert(Market.InvalidAmount.selector);
-        _placeETH(0.015 ether, price);
+        _placeEth(0.015 ether, price);
     }
 
     function test_placeOrderETH_revertsOnZeroPrice() public {
         vm.expectRevert(Market.InvalidPrice.selector);
-        _placeETH(1 ether, 0);
+        _placeEth(1 ether, 0);
     }
 
     function test_placeOrderETH_revertsWhenCostWouldOverflow() public {
         vm.expectRevert(Market.CostTooLarge.selector);
-        _placeETH(1 ether, type(uint256).max / 1 ether + 1);
+        _placeEth(1 ether, type(uint256).max / 1 ether + 1);
     }
 
     function test_placeOrderETH_orderCanBeFilled() public {
-        uint256 id = _placeETH(1 ether, price);
+        uint256 id = _placeEth(1 ether, price);
         _fundQuote(buyer, market.costOf(id));
 
         vm.prank(buyer);
@@ -119,8 +128,8 @@ contract WethMarketTest is MarketTestBase {
 
     function test_cancel_returnsWethNotEth() public {
         uint256 farmerEthBefore = farmer.balance;
-        uint256 id = _placeETH(1 ether, price);
-        vm.warp(block.timestamp + market.cancelLock());
+        uint256 id = _placeEth(1 ether, price);
+        vm.warp(block.timestamp + market.CANCEL_LOCK());
 
         vm.prank(farmer);
         market.cancel(id);

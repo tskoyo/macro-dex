@@ -13,8 +13,8 @@ contract WbtcUsdcMarketTest is MarketTestBase {
     }
 
     function test_pair_scaleFactors() public view {
-        assertEq(market.scaleMul(), 1);
-        assertEq(market.scaleDiv(), 100);
+        assertEq(market.SCALE_MUL(), 1);
+        assertEq(market.SCALE_DIV(), 100);
     }
 
     function test_pair_costInUsdc() public view {
