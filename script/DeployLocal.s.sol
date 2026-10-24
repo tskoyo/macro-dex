@@ -2,18 +2,18 @@
 pragma solidity ^0.8.24;
 
 import {Script, console} from "forge-std/Script.sol";
-import {FarmersMarket, IWETH} from "../src/FarmersMarket.sol";
-import {MockWETH, MockDAI} from "../src/Mocks.sol";
+import {WethMarket, IWETH} from "../src/WethMarket.sol";
+import {MockWETH, MockToken} from "../src/Mocks.sol";
 
-/// @notice LOCAL ONLY. Deploys mocks + FarmersMarket to anvil, funds test accounts with DAI,
+/// @notice LOCAL ONLY. Deploys mocks + WethMarket to anvil, funds test accounts with DAI,
 ///         and writes addresses to ui/deployments.json for the UI.
 contract DeployLocal is Script {
     function run() public {
         vm.startBroadcast();
 
         MockWETH weth = new MockWETH();
-        MockDAI dai = new MockDAI();
-        FarmersMarket market = new FarmersMarket(IWETH(address(weth)), dai, 10 ether);
+        MockToken dai = new MockToken("Dai Stablecoin (mock)", "DAI", 18);
+        WethMarket market = new WethMarket(IWETH(address(weth)), dai, 18, 0.01 ether, 24 hours);
 
         // Give the first 5 anvil accounts 1,000,000 DAI each.
         address[5] memory accounts = [
@@ -35,8 +35,8 @@ contract DeployLocal is Script {
         string memory out = vm.serializeAddress(json, "market", address(market));
         vm.writeJson(out, "./ui/deployments.json");
 
-        console.log("MockWETH     ", address(weth));
-        console.log("MockDAI      ", address(dai));
-        console.log("FarmersMarket", address(market));
+        console.log("MockWETH  ", address(weth));
+        console.log("MockDAI   ", address(dai));
+        console.log("WethMarket", address(market));
     }
 }
