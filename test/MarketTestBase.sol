@@ -12,7 +12,8 @@ import {MockToken} from "../src/Mocks.sol";
 ///      Amounts and prices are never hard-coded: they come from `unit`, `step` and `price`,
 ///      and expected costs are worked out independently of the contract's scale factors.
 abstract contract MarketTestBase is Test {
-    uint256 constant LOCK = 24 hours;
+    uint256 constant LOCK = 24 hours; // default cancel lock for tests that don't care about it
+    uint256 constant LONG_AFTER = 365 days; // "well past unlock", for tests that only need the lock gone
 
     // Pair config, set by the subclass in _deploy().
     IERC20 baseToken;
@@ -72,10 +73,23 @@ abstract contract MarketTestBase is Test {
     // Helpers
     // ------------------------------------------------------------------
 
+    /// @dev Place an order as `farmer` with the default cancel lock.
+    function createOrder(uint256 amount, uint256 price_) internal returns (uint256 id) {
+        id = createOrder(amount, price_, LOCK);
+    }
+
+    /// @dev Place an order as `farmer`. Pass `lock` only when the test is about the lock.
     function createOrder(uint256 amount, uint256 price_, uint256 lock) internal returns (uint256 id) {
         _fundBase(farmer, amount);
         vm.prank(farmer);
         id = market.placeOrder(amount, price_, lock);
+    }
+
+    /// @dev Warp to the first second order `id` may be cancelled, read from the order itself.
+    ///      For setup only: tests that assert the unlock time must work it out independently.
+    function _warpToUnlock(uint256 id) internal {
+        Market.Order memory o = market.getOrder(id);
+        vm.warp(uint256(o.createdAt) + o.cancelLock);
     }
 
     function _fundBase(address who, uint256 amount) internal {
@@ -159,7 +173,7 @@ abstract contract MarketTestBase is Test {
     // ------------------------------------------------------------------
 
     function test_placeOrder_pullsBase() public {
-        uint256 id = createOrder(unit, price, LOCK);
+        uint256 id = createOrder(unit, price);
 
         assertEq(baseToken.balanceOf(farmer), 0);
         assertEq(baseToken.balanceOf(address(market)), unit);
@@ -184,13 +198,13 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_placeOrder_incrementsIds() public {
-        assertEq(createOrder(unit, price, LOCK), 0);
-        assertEq(createOrder(2 * unit, price, LOCK), 1);
+        assertEq(createOrder(unit, price), 0);
+        assertEq(createOrder(2 * unit, price), 1);
         assertEq(market.nextOrderId(), 2);
     }
 
     function test_placeOrder_acceptsSmallestStep() public {
-        uint256 id = createOrder(step, price, LOCK);
+        uint256 id = createOrder(step, price);
         assertEq(market.getOrder(id).amount, step);
         assertEq(market.costOf(id), _expectedCost(step, price));
     }
@@ -208,6 +222,17 @@ abstract contract MarketTestBase is Test {
         market.placeOrder(unit + 1, price, LOCK);
     }
 
+    function test_placeOrder_revertsOnInvalidCancelLock() public {
+        uint256[5] memory bad = [uint256(0), 1 days - 1, 1 days + 1, 36 hours, 6 days];
+        _fundBase(farmer, unit);
+
+        for (uint256 i; i < bad.length; ++i) {
+            vm.expectRevert(Market.InvalidCancelLock.selector);
+            vm.prank(farmer);
+            market.placeOrder(unit, price, bad[i]);
+        }
+    }
+
     function test_placeOrder_revertsOnZeroPrice() public {
         _fundBase(farmer, unit);
         vm.expectRevert(Market.InvalidPrice.selector);
@@ -218,7 +243,7 @@ abstract contract MarketTestBase is Test {
     function test_placeOrder_largestNonOverflowingPrice() public {
         uint256 maxPrice = type(uint256).max / market.SCALE_MUL() / unit;
 
-        uint256 id = createOrder(unit, maxPrice, LOCK);
+        uint256 id = createOrder(unit, maxPrice);
         assertEq(market.costOf(id), (unit * maxPrice * market.SCALE_MUL()) / market.SCALE_DIV());
 
         _fundBase(farmer, unit);
@@ -250,7 +275,7 @@ abstract contract MarketTestBase is Test {
         steps = bound(steps, 1, 10_000);
         uint256 amount = steps * step;
 
-        uint256 id = createOrder(amount, price, LOCK);
+        uint256 id = createOrder(amount, price);
 
         assertEq(baseToken.balanceOf(address(market)), amount);
         assertEq(market.costOf(id), _expectedCost(amount, price));
@@ -273,7 +298,7 @@ abstract contract MarketTestBase is Test {
     function test_quoteCost_matchesCostOf() public {
         uint256 amount = unit + unit / 2;
         uint256 quoted = market.quoteCost(amount, price);
-        uint256 id = createOrder(amount, price, LOCK);
+        uint256 id = createOrder(amount, price);
         assertEq(market.costOf(id), quoted);
         assertEq(quoted, _expectedCost(amount, price));
     }
@@ -293,7 +318,7 @@ abstract contract MarketTestBase is Test {
     // ------------------------------------------------------------------
 
     function test_fill_swapsTokens() public {
-        uint256 id = createOrder(unit, price, LOCK);
+        uint256 id = createOrder(unit, price);
         uint256 cost = market.costOf(id);
         assertEq(cost, _expectedCost(unit, price));
         _fundQuote(buyer, cost);
@@ -309,7 +334,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_emitsOrderFilled() public {
-        uint256 id = createOrder(unit, price, LOCK);
+        uint256 id = createOrder(unit, price);
         uint256 cost = market.costOf(id);
         _fundQuote(buyer, cost);
 
@@ -320,7 +345,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_revertsOnSelfFill() public {
-        uint256 id = createOrder(unit, price, LOCK);
+        uint256 id = createOrder(unit, price);
         _fundQuote(farmer, market.costOf(id));
 
         vm.expectRevert(Market.SelfFill.selector);
@@ -335,7 +360,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_revertsWhenAlreadyFilled() public {
-        uint256 id = createOrder(unit, price, LOCK);
+        uint256 id = createOrder(unit, price);
         _fundQuote(buyer, market.costOf(id) * 2);
         vm.prank(buyer);
         market.fill(id);
@@ -346,8 +371,8 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_revertsWhenCancelled() public {
-        uint256 id = createOrder(unit, price, LOCK);
-        vm.warp(block.timestamp + LOCK + 1);
+        uint256 id = createOrder(unit, price);
+        _warpToUnlock(id);
         vm.prank(farmer);
         market.cancel(id);
 
@@ -358,7 +383,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_revertsWithInsufficientAllowance_andOrderStaysOpen() public {
-        uint256 id = createOrder(unit, price, LOCK);
+        uint256 id = createOrder(unit, price);
         uint256 cost = market.costOf(id);
         quote.mint(buyer, cost);
         vm.prank(buyer);
@@ -375,7 +400,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_revertsWithInsufficientBalance() public {
-        uint256 id = createOrder(unit, price, LOCK);
+        uint256 id = createOrder(unit, price);
         uint256 cost = market.costOf(id);
         quote.mint(buyer, cost - 1);
         vm.prank(buyer);
@@ -387,8 +412,8 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_worksAfterCancelLockExpires() public {
-        uint256 id = createOrder(unit, price, LOCK);
-        vm.warp(block.timestamp + LOCK + 365 days);
+        uint256 id = createOrder(unit, price);
+        vm.warp(block.timestamp + LOCK + LONG_AFTER);
         _fundQuote(buyer, market.costOf(id));
 
         vm.prank(buyer);
@@ -397,8 +422,8 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_onlyTouchesItsOwnOrder() public {
-        uint256 a = createOrder(unit, price, LOCK);
-        uint256 b = createOrder(2 * unit, price + 1, LOCK);
+        uint256 a = createOrder(unit, price);
+        uint256 b = createOrder(2 * unit, price + 1);
         _fundQuote(buyer, market.costOf(b));
 
         vm.prank(buyer);
@@ -412,7 +437,7 @@ abstract contract MarketTestBase is Test {
     function test_fill_atMaxPrice() public {
         uint256 amount = 10 * unit;
         uint256 maxPrice = type(uint256).max / market.SCALE_MUL() / amount;
-        uint256 id = createOrder(amount, maxPrice, LOCK);
+        uint256 id = createOrder(amount, maxPrice);
         uint256 cost = market.costOf(id);
         _fundQuote(buyer, cost);
 
@@ -428,8 +453,8 @@ abstract contract MarketTestBase is Test {
     // ------------------------------------------------------------------
 
     function test_cancel_revertsIfNotFarmer() public {
-        uint256 id = createOrder(unit, price, LOCK);
-        vm.warp(block.timestamp + market.CANCEL_LOCK());
+        uint256 id = createOrder(unit, price);
+        _warpToUnlock(id);
 
         vm.expectRevert(Market.NotFarmer.selector);
         vm.prank(stranger);
@@ -437,9 +462,8 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_cancel_revertsWhileLocked() public {
-        uint256 orderCancelLock = LOCK;
-        uint256 id = createOrder(unit, price, orderCancelLock);
-        uint256 unlocksAt = block.timestamp + orderCancelLock;
+        uint256 id = createOrder(unit, price, LOCK);
+        uint256 unlocksAt = block.timestamp + LOCK;
 
         vm.expectRevert(abi.encodeWithSelector(Market.StillLocked.selector, unlocksAt));
         vm.prank(farmer);
@@ -453,9 +477,8 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_cancel_succeedsExactlyAtUnlock() public {
-        uint256 cancelOrderLock = LOCK;
-        uint256 id = createOrder(unit, price, cancelOrderLock);
-        vm.warp(block.timestamp + cancelOrderLock);
+        uint256 id = createOrder(unit, price, LOCK);
+        vm.warp(block.timestamp + LOCK);
 
         vm.prank(farmer);
         market.cancel(id);
@@ -463,9 +486,8 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_cancel_emitsEventAndReturnsBase() public {
-        uint256 orderCancelLock = LOCK;
-        uint256 id = createOrder(unit, price, orderCancelLock);
-        vm.warp(block.timestamp + orderCancelLock);
+        uint256 id = createOrder(unit, price);
+        _warpToUnlock(id);
 
         vm.expectEmit(address(market));
         emit Market.OrderCancelled(id, farmer);
@@ -477,6 +499,24 @@ abstract contract MarketTestBase is Test {
         assertEq(uint8(_status(id)), uint8(Market.OrderStatus.Cancelled));
     }
 
+    /// @dev Every allowed lock length: locked one second before, cancellable exactly at unlock.
+    function testFuzz_cancel_eachAllowedLock(uint256 days_) public {
+        uint256 lock = bound(days_, 1, 5) * 1 days;
+        uint256 id = createOrder(unit, price, lock);
+        uint256 unlocksAt = block.timestamp + lock;
+        assertEq(market.getOrder(id).cancelLock, lock);
+
+        vm.warp(unlocksAt - 1);
+        vm.expectRevert(abi.encodeWithSelector(Market.StillLocked.selector, unlocksAt));
+        vm.prank(farmer);
+        market.cancel(id);
+
+        vm.warp(unlocksAt);
+        vm.prank(farmer);
+        market.cancel(id);
+        assertEq(uint8(_status(id)), uint8(Market.OrderStatus.Cancelled));
+    }
+
     function test_cancel_revertsOnUnknownOrder() public {
         vm.expectRevert(Market.OrderNotFound.selector);
         vm.prank(farmer);
@@ -484,9 +524,8 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_cancel_revertsWhenAlreadyCancelled() public {
-        uint256 orderCancelLock = LOCK;
-        uint256 id = createOrder(unit, price, orderCancelLock);
-        vm.warp(block.timestamp + orderCancelLock);
+        uint256 id = createOrder(unit, price);
+        _warpToUnlock(id);
         vm.prank(farmer);
         market.cancel(id);
 
@@ -496,13 +535,12 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_cancel_revertsWhenFilled() public {
-        uint256 orderCancelLock = LOCK;
-        uint256 id = createOrder(unit, price, orderCancelLock);
+        uint256 id = createOrder(unit, price);
         _fundQuote(buyer, market.costOf(id));
         vm.prank(buyer);
         market.fill(id);
 
-        vm.warp(block.timestamp + orderCancelLock);
+        _warpToUnlock(id);
         vm.expectRevert(Market.OrderNotOpen.selector);
         vm.prank(farmer);
         market.cancel(id);
@@ -513,7 +551,7 @@ abstract contract MarketTestBase is Test {
     // ------------------------------------------------------------------
 
     function test_FrontRun_LateBuyerFailsAndKeepsFunds() public {
-        uint256 id = createOrder(unit, price, LOCK);
+        uint256 id = createOrder(unit, price);
         uint256 cost = market.costOf(id);
 
         _fundQuote(buyer, cost);
@@ -533,13 +571,12 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_CancelledMeanwhile_BuyerFailsAndKeepsFunds() public {
-        uint256 orderCancelLock = 48 hours;
-        uint256 id = createOrder(unit, price, orderCancelLock);
+        uint256 id = createOrder(unit, price, 2 days);
         uint256 cost = market.costOf(id);
 
         _fundQuote(buyer, cost);
 
-        vm.warp(block.timestamp + orderCancelLock);
+        _warpToUnlock(id);
         vm.prank(farmer);
         market.cancel(id);
 
@@ -554,15 +591,15 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_CancelOneSecondBeforeUnlock_FailsSoBuyerCanStillFill() public {
-        uint256 orderCancelLock = LOCK;
-        uint256 id = createOrder(unit, price, orderCancelLock);
+        uint256 id = createOrder(unit, price, LOCK);
+        uint256 unlocksAt = block.timestamp + LOCK;
         uint256 cost = market.costOf(id);
 
         _fundQuote(buyer, cost);
 
-        vm.warp(block.timestamp + orderCancelLock - 1);
+        vm.warp(unlocksAt - 1);
         vm.prank(farmer);
-        vm.expectRevert(abi.encodeWithSelector(Market.StillLocked.selector, block.timestamp + 1));
+        vm.expectRevert(abi.encodeWithSelector(Market.StillLocked.selector, unlocksAt));
         market.cancel(id);
 
         vm.prank(buyer);
@@ -576,7 +613,7 @@ abstract contract MarketTestBase is Test {
         n = bound(n, 1, 10);
         winner = bound(winner, 0, n - 1);
 
-        uint256 id = createOrder(unit, price, LOCK);
+        uint256 id = createOrder(unit, price);
         uint256 cost = market.costOf(id);
 
         for (uint256 i; i < n; ++i) {

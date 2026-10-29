@@ -31,7 +31,7 @@ contract Market is ReentrancyGuard {
         uint256 price; // Whole quote units per 1 whole base unit, e.g. 2500.
         address farmer; // The seller.
         uint40 createdAt; // Block timestamp when placed.
-        uint256 cancelLock; // Block timestamp when the farmer may cancel.
+        uint256 cancelLock; // Seconds after createdAt before the farmer may cancel.
         OrderStatus status;
     }
 
@@ -62,9 +62,6 @@ contract Market is ReentrancyGuard {
 
     /// @notice Amounts must be a whole multiple of this, in the base token's smallest unit.
     uint256 public immutable AMOUNT_STEP;
-
-    /// @notice How long a farmer must wait before they may cancel.
-    uint256 public immutable CANCEL_LOCK;
 
     // ------------------------------------------------------------------
     // Storage
