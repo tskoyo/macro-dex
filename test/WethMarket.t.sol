@@ -20,7 +20,7 @@ contract WethMarketTest is MarketTestBase {
 
         weth = new MockWETH();
         quote = new MockToken("Dai Stablecoin (mock)", "DAI", 18);
-        wethMarket = new WethMarket(weth, quote, 18, step, LOCK);
+        wethMarket = new WethMarket(weth, quote, 18, step);
         baseToken = weth;
         market = wethMarket;
     }
@@ -33,7 +33,7 @@ contract WethMarketTest is MarketTestBase {
 
     function _placeEth(uint256 amount, uint256 price_) internal returns (uint256 id) {
         vm.prank(farmer);
-        id = wethMarket.placeOrderEth{value: amount}(price_);
+        id = wethMarket.placeOrderEth{value: amount}(price_, LOCK);
     }
 
     // ------------------------------------------------------------------
@@ -53,7 +53,7 @@ contract WethMarketTest is MarketTestBase {
 
     function test_constructor_revertsOnZeroWeth() public {
         vm.expectRevert(Market.ZeroAddress.selector);
-        new WethMarket(IERC20(address(0)), quote, 18, step, LOCK);
+        new WethMarket(IERC20(address(0)), quote, 18, step);
     }
 
     // ------------------------------------------------------------------
@@ -118,7 +118,7 @@ contract WethMarketTest is MarketTestBase {
     function test_cancel_returnsWethNotEth() public {
         uint256 farmerEthBefore = farmer.balance;
         uint256 id = _placeEth(1 ether, price);
-        vm.warp(block.timestamp + market.CANCEL_LOCK());
+        vm.warp(block.timestamp + LOCK + 1);
 
         vm.prank(farmer);
         market.cancel(id);

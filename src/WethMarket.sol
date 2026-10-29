@@ -18,9 +18,8 @@ contract WethMarket is Market {
     /// @param quoteToken_      DAI, USDC, USDT, ...
     /// @param quoteDecimals_   Decimals of the quote token. Cross-checked in Market.
     /// @param amountStep_      e.g. 0.01 ether.
-    /// @param cancelLock_      e.g. 24 hours.
-    constructor(IERC20 weth_, IERC20 quoteToken_, uint8 quoteDecimals_, uint256 amountStep_, uint256 cancelLock_)
-        Market(IERC20(address(weth_)), quoteToken_, 18, quoteDecimals_, amountStep_, cancelLock_)
+    constructor(IERC20 weth_, IERC20 quoteToken_, uint8 quoteDecimals_, uint256 amountStep_)
+        Market(IERC20(address(weth_)), quoteToken_, 18, quoteDecimals_, amountStep_)
     {
         // Market's constructor already confirmed this token really reports 18 decimals.
         WETH = weth_;
@@ -28,7 +27,8 @@ contract WethMarket is Market {
 
     /// @notice Place an order by sending plain ETH. The contract wraps it into wETH.
     /// @param price Whole quote units per 1 ETH, e.g. 2500.
-    function placeOrderEth(uint256 price) external payable nonReentrant returns (uint256 id) {
+    /// @param cancelLock Anti-spoofing delay before a farmer may cancel, e.g. 24 hours.
+    function placeOrderEth(uint256 price, uint256 cancelLock) external payable nonReentrant returns (uint256 id) {
         _checkOrder(msg.value, price);
 
         // Same safety idea as placeOrder: confirm we really received what we expect,
@@ -43,6 +43,6 @@ contract WethMarket is Market {
         uint256 received = WETH.balanceOf(address(this)) - balanceBefore;
         if (received != msg.value) revert WrapFailed(msg.value, received);
 
-        id = _createOrder(msg.sender, msg.value, price);
+        id = _createOrder(msg.sender, msg.value, price, cancelLock);
     }
 }
