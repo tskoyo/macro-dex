@@ -25,14 +25,14 @@ contract WbtcUsdcMarketTest is MarketTestBase {
 
     function test_constructor_revertsWhenStepWouldRound() public {
         vm.expectRevert(abi.encodeWithSelector(Market.StepWouldRound.selector, 1, 100));
-        new Market(baseToken, quote, 8, 6, 1, LOCK);
+        new Market(baseToken, quote, 8, 6, 1);
 
         vm.expectRevert(abi.encodeWithSelector(Market.StepWouldRound.selector, 150, 100));
-        new Market(baseToken, quote, 8, 6, 150, LOCK);
+        new Market(baseToken, quote, 8, 6, 150);
     }
 
     function test_constructor_acceptsStepOf100Sats() public {
-        Market m = new Market(baseToken, quote, 8, 6, 100, LOCK);
+        Market m = new Market(baseToken, quote, 8, 6, 100);
         // The smallest possible order at the smallest price costs exactly 1 USDC unit.
         assertEq(m.quoteCost(100, 1), 1);
     }

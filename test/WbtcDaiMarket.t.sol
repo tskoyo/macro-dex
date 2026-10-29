@@ -23,7 +23,7 @@ contract WbtcDaiMarketTest is MarketTestBase {
     }
 
     function test_constructor_acceptsOneSatStep() public {
-        Market m = new Market(baseToken, quote, 8, 18, 1, LOCK);
+        Market m = new Market(baseToken, quote, 8, 18, 1);
         assertEq(m.quoteCost(1, 60_000), 6e14, "1 sat @ 60,000 = 0.0006 DAI");
     }
 
@@ -35,6 +35,6 @@ contract WbtcDaiMarketTest is MarketTestBase {
         _fundBase(farmer, unit);
         vm.expectRevert(Market.CostTooLarge.selector);
         vm.prank(farmer);
-        market.placeOrder(unit, p);
+        market.placeOrder(unit, p, LOCK);
     }
 }

@@ -16,3 +16,4 @@ docs/
 ui/deployments.json
 
 .claude
+.vscode

@@ -65,17 +65,17 @@ abstract contract MarketTestBase is Test {
         price = price_;
         baseToken = new MockToken(baseSymbol, baseSymbol, baseDecimals_);
         quote = new MockToken(quoteSymbol, quoteSymbol, quoteDecimals_);
-        market = new Market(baseToken, quote, baseDecimals_, quoteDecimals_, step_, LOCK);
+        market = new Market(baseToken, quote, baseDecimals_, quoteDecimals_, step_);
     }
 
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
-    function createOrder(uint256 amount, uint256 price_) internal returns (uint256 id) {
+    function createOrder(uint256 amount, uint256 price_, uint256 lock) internal returns (uint256 id) {
         _fundBase(farmer, amount);
         vm.prank(farmer);
-        id = market.placeOrder(amount, price_);
+        id = market.placeOrder(amount, price_, lock);
     }
 
     function _fundBase(address who, uint256 amount) internal {
@@ -109,7 +109,6 @@ abstract contract MarketTestBase is Test {
         assertEq(market.BASE_DECIMALS(), baseDecimals);
         assertEq(market.QUOTE_DECIMALS(), quoteDecimals);
         assertEq(market.AMOUNT_STEP(), step);
-        assertEq(market.CANCEL_LOCK(), LOCK);
         assertEq(market.nextOrderId(), 0);
 
         if (quoteDecimals >= baseDecimals) {
@@ -123,47 +122,36 @@ abstract contract MarketTestBase is Test {
 
     function test_constructor_revertsOnZeroBase() public {
         vm.expectRevert(Market.ZeroAddress.selector);
-        new Market(IERC20(address(0)), quote, baseDecimals, quoteDecimals, step, LOCK);
+        new Market(IERC20(address(0)), quote, baseDecimals, quoteDecimals, step);
     }
 
     function test_constructor_revertsOnZeroQuote() public {
         vm.expectRevert(Market.ZeroAddress.selector);
-        new Market(baseToken, IERC20(address(0)), baseDecimals, quoteDecimals, step, LOCK);
+        new Market(baseToken, IERC20(address(0)), baseDecimals, quoteDecimals, step);
     }
 
     function test_constructor_revertsOnSameToken() public {
         vm.expectRevert(Market.SameToken.selector);
-        new Market(baseToken, baseToken, baseDecimals, baseDecimals, step, LOCK);
+        new Market(baseToken, baseToken, baseDecimals, baseDecimals, step);
     }
 
     function test_constructor_revertsOnWrongBaseDecimals() public {
         vm.expectRevert(
             abi.encodeWithSelector(Market.DecimalsMismatch.selector, address(baseToken), baseDecimals + 1, baseDecimals)
         );
-        new Market(baseToken, quote, baseDecimals + 1, quoteDecimals, step, LOCK);
+        new Market(baseToken, quote, baseDecimals + 1, quoteDecimals, step);
     }
 
     function test_constructor_revertsOnWrongQuoteDecimals() public {
         vm.expectRevert(
             abi.encodeWithSelector(Market.DecimalsMismatch.selector, address(quote), quoteDecimals + 1, quoteDecimals)
         );
-        new Market(baseToken, quote, baseDecimals, quoteDecimals + 1, step, LOCK);
+        new Market(baseToken, quote, baseDecimals, quoteDecimals + 1, step);
     }
 
     function test_constructor_revertsOnZeroStep() public {
         vm.expectRevert(Market.InvalidStep.selector);
-        new Market(baseToken, quote, baseDecimals, quoteDecimals, 0, LOCK);
-    }
-
-    function test_constructor_revertsOnCancelLockOutOfRange() public {
-        uint256 minLock = market.MIN_CANCEL_LOCK();
-        uint256 maxLock = market.MAX_CANCEL_LOCK();
-
-        vm.expectRevert(Market.InvalidCancelLock.selector);
-        new Market(baseToken, quote, baseDecimals, quoteDecimals, step, minLock - 1);
-
-        vm.expectRevert(Market.InvalidCancelLock.selector);
-        new Market(baseToken, quote, baseDecimals, quoteDecimals, step, maxLock + 1);
+        new Market(baseToken, quote, baseDecimals, quoteDecimals, 0);
     }
 
     // ------------------------------------------------------------------
@@ -171,7 +159,7 @@ abstract contract MarketTestBase is Test {
     // ------------------------------------------------------------------
 
     function test_placeOrder_pullsBase() public {
-        uint256 id = createOrder(unit, price);
+        uint256 id = createOrder(unit, price, LOCK);
 
         assertEq(baseToken.balanceOf(farmer), 0);
         assertEq(baseToken.balanceOf(address(market)), unit);
@@ -192,17 +180,17 @@ abstract contract MarketTestBase is Test {
         vm.expectEmit(address(market));
         emit Market.OrderPlaced(0, farmer, unit, price, block.timestamp);
         vm.prank(farmer);
-        market.placeOrder(unit, price);
+        market.placeOrder(unit, price, LOCK);
     }
 
     function test_placeOrder_incrementsIds() public {
-        assertEq(createOrder(unit, price), 0);
-        assertEq(createOrder(2 * unit, price), 1);
+        assertEq(createOrder(unit, price, LOCK), 0);
+        assertEq(createOrder(2 * unit, price, LOCK), 1);
         assertEq(market.nextOrderId(), 2);
     }
 
     function test_placeOrder_acceptsSmallestStep() public {
-        uint256 id = createOrder(step, price);
+        uint256 id = createOrder(step, price, LOCK);
         assertEq(market.getOrder(id).amount, step);
         assertEq(market.costOf(id), _expectedCost(step, price));
     }
@@ -210,33 +198,33 @@ abstract contract MarketTestBase is Test {
     function test_placeOrder_revertsOnZeroAmount() public {
         vm.expectRevert(Market.InvalidAmount.selector);
         vm.prank(farmer);
-        market.placeOrder(0, price);
+        market.placeOrder(0, price, LOCK);
     }
 
     function test_placeOrder_revertsWhenAmountNotMultipleOfStep() public {
         _fundBase(farmer, unit + 1);
         vm.expectRevert(Market.InvalidAmount.selector);
         vm.prank(farmer);
-        market.placeOrder(unit + 1, price);
+        market.placeOrder(unit + 1, price, LOCK);
     }
 
     function test_placeOrder_revertsOnZeroPrice() public {
         _fundBase(farmer, unit);
         vm.expectRevert(Market.InvalidPrice.selector);
         vm.prank(farmer);
-        market.placeOrder(unit, 0);
+        market.placeOrder(unit, 0, LOCK);
     }
 
     function test_placeOrder_largestNonOverflowingPrice() public {
         uint256 maxPrice = type(uint256).max / market.SCALE_MUL() / unit;
 
-        uint256 id = createOrder(unit, maxPrice);
+        uint256 id = createOrder(unit, maxPrice, LOCK);
         assertEq(market.costOf(id), (unit * maxPrice * market.SCALE_MUL()) / market.SCALE_DIV());
 
         _fundBase(farmer, unit);
         vm.expectRevert(Market.CostTooLarge.selector);
         vm.prank(farmer);
-        market.placeOrder(unit, maxPrice + 1);
+        market.placeOrder(unit, maxPrice + 1, LOCK);
     }
 
     function test_placeOrder_revertsWithoutApproval() public {
@@ -246,7 +234,7 @@ abstract contract MarketTestBase is Test {
             abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(market), 0, unit)
         );
         vm.prank(farmer);
-        market.placeOrder(unit, price);
+        market.placeOrder(unit, price, LOCK);
     }
 
     function test_placeOrder_revertsWithoutBalance() public {
@@ -255,14 +243,14 @@ abstract contract MarketTestBase is Test {
 
         vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, farmer, 0, unit));
         vm.prank(farmer);
-        market.placeOrder(unit, price);
+        market.placeOrder(unit, price, LOCK);
     }
 
     function testFuzz_placeOrder_validAmounts(uint256 steps) public {
         steps = bound(steps, 1, 10_000);
         uint256 amount = steps * step;
 
-        uint256 id = createOrder(amount, price);
+        uint256 id = createOrder(amount, price, LOCK);
 
         assertEq(baseToken.balanceOf(address(market)), amount);
         assertEq(market.costOf(id), _expectedCost(amount, price));
@@ -285,7 +273,7 @@ abstract contract MarketTestBase is Test {
     function test_quoteCost_matchesCostOf() public {
         uint256 amount = unit + unit / 2;
         uint256 quoted = market.quoteCost(amount, price);
-        uint256 id = createOrder(amount, price);
+        uint256 id = createOrder(amount, price, LOCK);
         assertEq(market.costOf(id), quoted);
         assertEq(quoted, _expectedCost(amount, price));
     }
@@ -305,7 +293,7 @@ abstract contract MarketTestBase is Test {
     // ------------------------------------------------------------------
 
     function test_fill_swapsTokens() public {
-        uint256 id = createOrder(unit, price);
+        uint256 id = createOrder(unit, price, LOCK);
         uint256 cost = market.costOf(id);
         assertEq(cost, _expectedCost(unit, price));
         _fundQuote(buyer, cost);
@@ -321,7 +309,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_emitsOrderFilled() public {
-        uint256 id = createOrder(unit, price);
+        uint256 id = createOrder(unit, price, LOCK);
         uint256 cost = market.costOf(id);
         _fundQuote(buyer, cost);
 
@@ -332,7 +320,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_revertsOnSelfFill() public {
-        uint256 id = createOrder(unit, price);
+        uint256 id = createOrder(unit, price, LOCK);
         _fundQuote(farmer, market.costOf(id));
 
         vm.expectRevert(Market.SelfFill.selector);
@@ -347,7 +335,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_revertsWhenAlreadyFilled() public {
-        uint256 id = createOrder(unit, price);
+        uint256 id = createOrder(unit, price, LOCK);
         _fundQuote(buyer, market.costOf(id) * 2);
         vm.prank(buyer);
         market.fill(id);
@@ -358,8 +346,8 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_revertsWhenCancelled() public {
-        uint256 id = createOrder(unit, price);
-        vm.warp(block.timestamp + market.CANCEL_LOCK());
+        uint256 id = createOrder(unit, price, LOCK);
+        vm.warp(block.timestamp + LOCK + 1);
         vm.prank(farmer);
         market.cancel(id);
 
@@ -370,7 +358,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_revertsWithInsufficientAllowance_andOrderStaysOpen() public {
-        uint256 id = createOrder(unit, price);
+        uint256 id = createOrder(unit, price, LOCK);
         uint256 cost = market.costOf(id);
         quote.mint(buyer, cost);
         vm.prank(buyer);
@@ -387,7 +375,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_revertsWithInsufficientBalance() public {
-        uint256 id = createOrder(unit, price);
+        uint256 id = createOrder(unit, price, LOCK);
         uint256 cost = market.costOf(id);
         quote.mint(buyer, cost - 1);
         vm.prank(buyer);
@@ -399,8 +387,8 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_worksAfterCancelLockExpires() public {
-        uint256 id = createOrder(unit, price);
-        vm.warp(block.timestamp + market.CANCEL_LOCK() + 365 days);
+        uint256 id = createOrder(unit, price, LOCK);
+        vm.warp(block.timestamp + LOCK + 365 days);
         _fundQuote(buyer, market.costOf(id));
 
         vm.prank(buyer);
@@ -409,8 +397,8 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_fill_onlyTouchesItsOwnOrder() public {
-        uint256 a = createOrder(unit, price);
-        uint256 b = createOrder(2 * unit, price + 1);
+        uint256 a = createOrder(unit, price, LOCK);
+        uint256 b = createOrder(2 * unit, price + 1, LOCK);
         _fundQuote(buyer, market.costOf(b));
 
         vm.prank(buyer);
@@ -424,7 +412,7 @@ abstract contract MarketTestBase is Test {
     function test_fill_atMaxPrice() public {
         uint256 amount = 10 * unit;
         uint256 maxPrice = type(uint256).max / market.SCALE_MUL() / amount;
-        uint256 id = createOrder(amount, maxPrice);
+        uint256 id = createOrder(amount, maxPrice, LOCK);
         uint256 cost = market.costOf(id);
         _fundQuote(buyer, cost);
 
@@ -440,7 +428,7 @@ abstract contract MarketTestBase is Test {
     // ------------------------------------------------------------------
 
     function test_cancel_revertsIfNotFarmer() public {
-        uint256 id = createOrder(unit, price);
+        uint256 id = createOrder(unit, price, LOCK);
         vm.warp(block.timestamp + market.CANCEL_LOCK());
 
         vm.expectRevert(Market.NotFarmer.selector);
@@ -449,8 +437,9 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_cancel_revertsWhileLocked() public {
-        uint256 id = createOrder(unit, price);
-        uint256 unlocksAt = block.timestamp + market.CANCEL_LOCK();
+        uint256 orderCancelLock = LOCK;
+        uint256 id = createOrder(unit, price, orderCancelLock);
+        uint256 unlocksAt = block.timestamp + orderCancelLock;
 
         vm.expectRevert(abi.encodeWithSelector(Market.StillLocked.selector, unlocksAt));
         vm.prank(farmer);
@@ -464,8 +453,9 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_cancel_succeedsExactlyAtUnlock() public {
-        uint256 id = createOrder(unit, price);
-        vm.warp(block.timestamp + market.CANCEL_LOCK());
+        uint256 cancelOrderLock = LOCK;
+        uint256 id = createOrder(unit, price, cancelOrderLock);
+        vm.warp(block.timestamp + cancelOrderLock);
 
         vm.prank(farmer);
         market.cancel(id);
@@ -473,8 +463,9 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_cancel_emitsEventAndReturnsBase() public {
-        uint256 id = createOrder(unit, price);
-        vm.warp(block.timestamp + market.CANCEL_LOCK());
+        uint256 orderCancelLock = LOCK;
+        uint256 id = createOrder(unit, price, orderCancelLock);
+        vm.warp(block.timestamp + orderCancelLock);
 
         vm.expectEmit(address(market));
         emit Market.OrderCancelled(id, farmer);
@@ -493,8 +484,9 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_cancel_revertsWhenAlreadyCancelled() public {
-        uint256 id = createOrder(unit, price);
-        vm.warp(block.timestamp + market.CANCEL_LOCK());
+        uint256 orderCancelLock = LOCK;
+        uint256 id = createOrder(unit, price, orderCancelLock);
+        vm.warp(block.timestamp + orderCancelLock);
         vm.prank(farmer);
         market.cancel(id);
 
@@ -504,12 +496,13 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_cancel_revertsWhenFilled() public {
-        uint256 id = createOrder(unit, price);
+        uint256 orderCancelLock = LOCK;
+        uint256 id = createOrder(unit, price, orderCancelLock);
         _fundQuote(buyer, market.costOf(id));
         vm.prank(buyer);
         market.fill(id);
 
-        vm.warp(block.timestamp + market.CANCEL_LOCK());
+        vm.warp(block.timestamp + orderCancelLock);
         vm.expectRevert(Market.OrderNotOpen.selector);
         vm.prank(farmer);
         market.cancel(id);
@@ -520,7 +513,7 @@ abstract contract MarketTestBase is Test {
     // ------------------------------------------------------------------
 
     function test_FrontRun_LateBuyerFailsAndKeepsFunds() public {
-        uint256 id = createOrder(unit, price);
+        uint256 id = createOrder(unit, price, LOCK);
         uint256 cost = market.costOf(id);
 
         _fundQuote(buyer, cost);
@@ -540,12 +533,13 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_CancelledMeanwhile_BuyerFailsAndKeepsFunds() public {
-        uint256 id = createOrder(unit, price);
+        uint256 orderCancelLock = 48 hours;
+        uint256 id = createOrder(unit, price, orderCancelLock);
         uint256 cost = market.costOf(id);
 
         _fundQuote(buyer, cost);
 
-        vm.warp(block.timestamp + market.CANCEL_LOCK());
+        vm.warp(block.timestamp + orderCancelLock);
         vm.prank(farmer);
         market.cancel(id);
 
@@ -560,12 +554,13 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_CancelOneSecondBeforeUnlock_FailsSoBuyerCanStillFill() public {
-        uint256 id = createOrder(unit, price);
+        uint256 orderCancelLock = LOCK;
+        uint256 id = createOrder(unit, price, orderCancelLock);
         uint256 cost = market.costOf(id);
 
         _fundQuote(buyer, cost);
 
-        vm.warp(block.timestamp + market.CANCEL_LOCK() - 1);
+        vm.warp(block.timestamp + orderCancelLock - 1);
         vm.prank(farmer);
         vm.expectRevert(abi.encodeWithSelector(Market.StillLocked.selector, block.timestamp + 1));
         market.cancel(id);
@@ -581,7 +576,7 @@ abstract contract MarketTestBase is Test {
         n = bound(n, 1, 10);
         winner = bound(winner, 0, n - 1);
 
-        uint256 id = createOrder(unit, price);
+        uint256 id = createOrder(unit, price, LOCK);
         uint256 cost = market.costOf(id);
 
         for (uint256 i; i < n; ++i) {
