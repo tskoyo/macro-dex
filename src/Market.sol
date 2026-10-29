@@ -31,6 +31,7 @@ contract Market is ReentrancyGuard {
         uint256 price; // Whole quote units per 1 whole base unit, e.g. 2500.
         address farmer; // The seller.
         uint40 createdAt; // Block timestamp when placed.
+        uint256 cancelLock; // Block timestamp when the farmer may cancel.
         OrderStatus status;
     }
 
@@ -38,10 +39,12 @@ contract Market is ReentrancyGuard {
     // Settings (fixed forever at deploy)
     // ------------------------------------------------------------------
 
-    /// @notice Sanity bounds on the cancel lock, so a deploy can't make a market
-    ///         that is either pointless (no lock) or a trap (a year-long lock).
-    uint256 public constant MIN_CANCEL_LOCK = 24 hours;
-    uint256 public constant MAX_CANCEL_LOCK = 7 days;
+    /// @notice Minimum and maximum cancel lock, in seconds.
+    uint256 constant ONE_DAY_LOCK = 1 days;
+    uint256 constant TWO_DAY_LOCK = 2 days;
+    uint256 constant THREE_DAY_LOCK = 3 days;
+    uint256 constant FOUR_DAY_LOCK = 4 days;
+    uint256 constant FIVE_DAY_LOCK = 5 days;
 
     /// @notice The token the farmer sells (wETH, wBTC, ...).
     IERC20 public immutable BASE_TOKEN;
@@ -116,15 +119,7 @@ contract Market is ReentrancyGuard {
     /// @param baseDecimals_   Decimals of the base token. Cross-checked below.
     /// @param quoteDecimals_  Decimals of the quote token. Cross-checked below.
     /// @param amountStep_     Order sizes must be a multiple of this, e.g. 0.01 ether.
-    /// @param cancelLock_     Anti-spoofing delay before a farmer may cancel, e.g. 24 hours.
-    constructor(
-        IERC20 baseToken_,
-        IERC20 quoteToken_,
-        uint8 baseDecimals_,
-        uint8 quoteDecimals_,
-        uint256 amountStep_,
-        uint256 cancelLock_
-    ) {
+    constructor(IERC20 baseToken_, IERC20 quoteToken_, uint8 baseDecimals_, uint8 quoteDecimals_, uint256 amountStep_) {
         if (address(baseToken_) == address(0) || address(quoteToken_) == address(0)) {
             revert ZeroAddress();
         }
@@ -159,10 +154,6 @@ contract Market is ReentrancyGuard {
         // refuse to exist at all.
         if (amountStep_ % div != 0) revert StepWouldRound(amountStep_, div);
 
-        if (cancelLock_ < MIN_CANCEL_LOCK || cancelLock_ > MAX_CANCEL_LOCK) {
-            revert InvalidCancelLock();
-        }
-
         BASE_TOKEN = baseToken_;
         QUOTE_TOKEN = quoteToken_;
         BASE_DECIMALS = baseDecimals_;
@@ -170,7 +161,6 @@ contract Market is ReentrancyGuard {
         SCALE_MUL = mul;
         SCALE_DIV = div;
         AMOUNT_STEP = amountStep_;
-        CANCEL_LOCK = cancelLock_;
     }
 
     // ------------------------------------------------------------------
@@ -180,7 +170,14 @@ contract Market is ReentrancyGuard {
     /// @notice Place an order with base tokens you already hold. Approve this contract first.
     /// @param amount Base token amount, in its smallest unit. Multiple of amountStep.
     /// @param price  Whole quote units per 1 whole base unit.
-    function placeOrder(uint256 amount, uint256 price) external nonReentrant returns (uint256 id) {
+    /// @param cancelLock Anti-spoofing delay before a farmer may cancel, e.g. 24 hours.
+    function placeOrder(uint256 amount, uint256 price, uint256 cancelLock) external nonReentrant returns (uint256 id) {
+        if (
+            cancelLock != ONE_DAY_LOCK && cancelLock != TWO_DAY_LOCK && cancelLock != THREE_DAY_LOCK
+                && cancelLock != FOUR_DAY_LOCK && cancelLock != FIVE_DAY_LOCK
+        ) {
+            revert InvalidCancelLock();
+        }
         _checkOrder(amount, price);
 
         // Measure what actually arrived. A fee-on-transfer or rebasing token would
@@ -193,7 +190,7 @@ contract Market is ReentrancyGuard {
             revert UnexpectedTransferAmount(amount, received);
         }
 
-        id = _createOrder(msg.sender, amount, price);
+        id = _createOrder(msg.sender, amount, price, cancelLock);
     }
 
     // ------------------------------------------------------------------
@@ -226,7 +223,7 @@ contract Market is ReentrancyGuard {
         Order storage order = _openOrder(id);
         if (msg.sender != order.farmer) revert NotFarmer();
 
-        uint256 unlocksAt = uint256(order.createdAt) + CANCEL_LOCK;
+        uint256 unlocksAt = uint256(order.createdAt) + uint256(order.cancelLock);
         if (block.timestamp < unlocksAt) revert StillLocked(unlocksAt);
 
         order.status = OrderStatus.Cancelled;
@@ -283,12 +280,16 @@ contract Market is ReentrancyGuard {
         if (gross > type(uint256).max / SCALE_MUL) revert CostTooLarge();
     }
 
-    function _createOrder(address farmer, uint256 amount, uint256 price) internal returns (uint256 id) {
+    function _createOrder(address farmer, uint256 amount, uint256 price, uint256 cancelLock)
+        internal
+        returns (uint256 id)
+    {
         id = nextOrderId++;
         _orders[id] = Order({
             id: id,
             amount: amount,
             price: price,
+            cancelLock: cancelLock,
             farmer: farmer,
             createdAt: uint40(block.timestamp),
             status: OrderStatus.Open

@@ -13,7 +13,7 @@ contract DeployLocal is Script {
 
         MockWETH weth = new MockWETH();
         MockToken dai = new MockToken("Dai Stablecoin (mock)", "DAI", 18);
-        WethMarket market = new WethMarket(weth, dai, 18, 0.01 ether, 24 hours);
+        WethMarket market = new WethMarket(weth, dai, 18, 0.01 ether);
 
         // Give the first 5 anvil accounts 1,000,000 DAI each.
         address[5] memory accounts = [
