@@ -261,7 +261,7 @@ contract Market is ReentrancyGuard {
         return (amount * price * SCALE_MUL) / SCALE_DIV;
     }
 
-    /// @dev Validates an order and guarantees the cost arithmetic can never overflow.
+    /// @dev Validates an order's amount and price, and guarantees the cost arithmetic can never overflow.
     ///      This matters because an order that is placed but un-fillable would lock
     ///      the farmer's tokens until the cancel window opens.
     function _checkAmountAndPrice(uint256 amount, uint256 price) internal view {
