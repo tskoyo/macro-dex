@@ -169,13 +169,8 @@ contract Market is ReentrancyGuard {
     /// @param price  Whole quote units per 1 whole base unit.
     /// @param cancelLock Anti-spoofing delay before a farmer may cancel, e.g. 24 hours.
     function placeOrder(uint256 amount, uint256 price, uint256 cancelLock) external nonReentrant returns (uint256 id) {
-        if (
-            cancelLock != ONE_DAY_LOCK && cancelLock != TWO_DAY_LOCK && cancelLock != THREE_DAY_LOCK
-                && cancelLock != FOUR_DAY_LOCK && cancelLock != FIVE_DAY_LOCK
-        ) {
-            revert InvalidCancelLock();
-        }
-        _checkOrder(amount, price);
+        _checkAmountAndPrice(amount, price);
+        _checkCancelLock(cancelLock);
 
         // Measure what actually arrived. A fee-on-transfer or rebasing token would
         // deliver less than `amount`, which would leave the contract short later.
@@ -247,7 +242,7 @@ contract Market is ReentrancyGuard {
 
     /// @notice Price an order before placing it, so the frontend can show the exact number.
     function quoteCost(uint256 amount, uint256 price) external view returns (uint256) {
-        _checkOrder(amount, price);
+        _checkAmountAndPrice(amount, price);
         return _costOf(amount, price);
     }
 
@@ -269,12 +264,22 @@ contract Market is ReentrancyGuard {
     /// @dev Validates an order and guarantees the cost arithmetic can never overflow.
     ///      This matters because an order that is placed but un-fillable would lock
     ///      the farmer's tokens until the cancel window opens.
-    function _checkOrder(uint256 amount, uint256 price) internal view {
+    function _checkAmountAndPrice(uint256 amount, uint256 price) internal view {
         if (amount == 0 || amount % AMOUNT_STEP != 0) revert InvalidAmount();
         if (price == 0) revert InvalidPrice();
         if (price > type(uint256).max / amount) revert CostTooLarge();
         uint256 gross = amount * price;
         if (gross > type(uint256).max / SCALE_MUL) revert CostTooLarge();
+    }
+
+    /// @dev Validates a cancelLock value. The frontend should offer only the five valid choices.
+    function _checkCancelLock(uint256 cancelLock) internal pure {
+        if (
+            cancelLock != ONE_DAY_LOCK && cancelLock != TWO_DAY_LOCK && cancelLock != THREE_DAY_LOCK
+                && cancelLock != FOUR_DAY_LOCK && cancelLock != FIVE_DAY_LOCK
+        ) {
+            revert InvalidCancelLock();
+        }
     }
 
     function _createOrder(address farmer, uint256 amount, uint256 price, uint256 cancelLock)

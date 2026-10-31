@@ -19,7 +19,7 @@ contract WethMarket is Market {
     /// @param quoteDecimals_   Decimals of the quote token. Cross-checked in Market.
     /// @param amountStep_      e.g. 0.01 ether.
     constructor(IERC20 weth_, IERC20 quoteToken_, uint8 quoteDecimals_, uint256 amountStep_)
-        Market(IERC20(address(weth_)), quoteToken_, 18, quoteDecimals_, amountStep_)
+        Market(weth_, quoteToken_, 18, quoteDecimals_, amountStep_)
     {
         // Market's constructor already confirmed this token really reports 18 decimals.
         WETH = weth_;
@@ -29,7 +29,8 @@ contract WethMarket is Market {
     /// @param price Whole quote units per 1 ETH, e.g. 2500.
     /// @param cancelLock Anti-spoofing delay before a farmer may cancel, e.g. 24 hours.
     function placeOrderEth(uint256 price, uint256 cancelLock) external payable nonReentrant returns (uint256 id) {
-        _checkOrder(msg.value, price);
+        _checkAmountAndPrice(msg.value, price);
+        _checkCancelLock(cancelLock);
 
         // Same safety idea as placeOrder: confirm we really received what we expect,
         // rather than trusting the wrapper. wETH mints 1:1, so this should always hold.
