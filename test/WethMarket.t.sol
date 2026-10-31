@@ -127,6 +127,16 @@ contract WethMarketTest is MarketTestBase {
         assertEq(farmer.balance, farmerEthBefore - 1 ether, "no raw ETH sent");
     }
 
+    function test_placeOrderEth_revertsOnInvalidCancelLock() public {
+        vm.expectRevert(Market.InvalidCancelLock.selector);
+        vm.prank(farmer);
+        wethMarket.placeOrderEth{value: 1 ether}(price, LOCK - 1);
+
+        vm.expectRevert(Market.InvalidCancelLock.selector);
+        vm.prank(farmer);
+        wethMarket.placeOrderEth{value: 1 ether}(price, 0);
+    }
+
     function test_rawEthTransferIsRejected() public {
         vm.prank(farmer);
         (bool ok,) = address(market).call{value: 1 ether}("");
