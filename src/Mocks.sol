@@ -108,3 +108,21 @@ contract MockFeeToken is ERC20 {
         }
     }
 }
+
+/// @notice TEST ONLY. A broken wETH that mints 1 wei less than it was sent.
+contract MockShortWETH is ERC20 {
+    constructor() ERC20("Short wETH (mock)", "WETH") {}
+
+    function deposit() external payable {
+        _mint(msg.sender, msg.value - 1);
+    }
+}
+
+/// @notice TEST ONLY. A broken wETH whose deposit always reverts.
+contract MockRevertingWETH is ERC20 {
+    constructor() ERC20("Reverting wETH (mock)", "WETH") {}
+
+    function deposit() external payable {
+        revert("deposit disabled");
+    }
+}

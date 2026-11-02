@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {Market} from "../src/Market.sol";
-import {MockToken} from "../src/Mocks.sol";
+import {MockToken, MockFeeToken} from "../src/Mocks.sol";
 
 /// @notice Pair-agnostic Market tests. Every test here runs once per concrete pair.
 /// @dev A subclass deploys its pair in _deploy() and sets the config fields below.
@@ -269,6 +269,19 @@ abstract contract MarketTestBase is Test {
         vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, farmer, 0, unit));
         vm.prank(farmer);
         market.placeOrder(unit, price, LOCK);
+    }
+
+    function test_placeOrder_revertsOnFeeOnTransferBase() public {
+        MockFeeToken fee = new MockFeeToken();
+        Market m = new Market(fee, quote, 18, quoteDecimals, 1 ether);
+        fee.mint(farmer, 1 ether);
+        vm.prank(farmer);
+        fee.approve(address(m), 1 ether);
+
+        uint256 received = 1 ether - (1 ether * fee.FEE_BPS()) / 10_000;
+        vm.expectRevert(abi.encodeWithSelector(Market.UnexpectedTransferAmount.selector, 1 ether, received));
+        vm.prank(farmer);
+        m.placeOrder(1 ether, price, LOCK);
     }
 
     function testFuzz_placeOrder_validAmounts(uint256 steps) public {

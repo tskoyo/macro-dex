@@ -169,20 +169,7 @@ contract Market is ReentrancyGuard {
     /// @param price  Whole quote units per 1 whole base unit.
     /// @param cancelLock Anti-spoofing delay before a farmer may cancel, e.g. 24 hours.
     function placeOrder(uint256 amount, uint256 price, uint256 cancelLock) external nonReentrant returns (uint256 id) {
-        _checkAmountAndPrice(amount, price);
-        _checkCancelLock(cancelLock);
-
-        // Measure what actually arrived. A fee-on-transfer or rebasing token would
-        // deliver less than `amount`, which would leave the contract short later.
-        // We refuse those tokens here rather than discover the shortfall at cancel time.
-        uint256 balanceBefore = BASE_TOKEN.balanceOf(address(this));
-        BASE_TOKEN.safeTransferFrom(msg.sender, address(this), amount);
-        uint256 received = BASE_TOKEN.balanceOf(address(this)) - balanceBefore;
-        if (received != amount) {
-            revert UnexpectedTransferAmount(amount, received);
-        }
-
-        id = _createOrder(msg.sender, amount, price, cancelLock);
+        id = _placeOrder(amount, price, cancelLock, _pullBase);
     }
 
     // ------------------------------------------------------------------
@@ -282,8 +269,36 @@ contract Market is ReentrancyGuard {
         }
     }
 
-    function _createOrder(address farmer, uint256 amount, uint256 price, uint256 cancelLock)
+    /// @dev The only way to create an order. Every placeOrder* entry point must come through here,
+    ///      so none of them can skip the checks or the received-amount guard.
+    /// @param deposit Brings `amount` base tokens into this contract, e.g. _pullBase.
+    function _placeOrder(uint256 amount, uint256 price, uint256 cancelLock, function(uint256) internal deposit)
         internal
+        returns (uint256 id)
+    {
+        _checkAmountAndPrice(amount, price);
+        _checkCancelLock(cancelLock);
+
+        // Measure what actually arrived. A fee-on-transfer or rebasing token would
+        // deliver less than `amount`, which would leave the contract short later.
+        // We refuse those tokens here rather than discover the shortfall at cancel time.
+        uint256 balanceBefore = BASE_TOKEN.balanceOf(address(this));
+        deposit(amount);
+        uint256 received = BASE_TOKEN.balanceOf(address(this)) - balanceBefore;
+        if (received != amount) {
+            revert UnexpectedTransferAmount(amount, received);
+        }
+
+        id = _createOrder(msg.sender, amount, price, cancelLock);
+    }
+
+    /// @dev Deposit for placeOrder: pull base tokens the farmer approved.
+    function _pullBase(uint256 amount) private {
+        BASE_TOKEN.safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    function _createOrder(address farmer, uint256 amount, uint256 price, uint256 cancelLock)
+        private
         returns (uint256 id)
     {
         id = nextOrderId++;
