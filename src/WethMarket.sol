@@ -12,7 +12,7 @@ import {Market} from "./Market.sol";
 contract WethMarket is Market {
     IERC20 public immutable WETH;
 
-    error WrapFailed(uint256 expected, uint256 received);
+    error WrapFailed();
 
     /// @param weth_            The official wETH contract. Always 18 decimals.
     /// @param quoteToken_      DAI, USDC, USDT, ...
@@ -29,21 +29,14 @@ contract WethMarket is Market {
     /// @param price Whole quote units per 1 ETH, e.g. 2500.
     /// @param cancelLock Anti-spoofing delay before a farmer may cancel, e.g. 24 hours.
     function placeOrderEth(uint256 price, uint256 cancelLock) external payable nonReentrant returns (uint256 id) {
-        _checkAmountAndPrice(msg.value, price);
-        _checkCancelLock(cancelLock);
-
-        // Same safety idea as placeOrder: confirm we really received what we expect,
+        // Same path as placeOrder: _placeOrder confirms we really received msg.value wETH,
         // rather than trusting the wrapper. wETH mints 1:1, so this should always hold.
-        uint256 balanceBefore = WETH.balanceOf(address(this));
-        // WETH.deposit{value: msg.value}();
-        (bool ok,) = address(WETH).call{value: msg.value}(abi.encodeWithSignature("deposit()"));
-        if (!ok) {
-            revert WrapFailed(msg.value, WETH.balanceOf(address(this)) - balanceBefore);
-        }
+        id = _placeOrder(msg.value, price, cancelLock, _wrapEth);
+    }
 
-        uint256 received = WETH.balanceOf(address(this)) - balanceBefore;
-        if (received != msg.value) revert WrapFailed(msg.value, received);
-
-        id = _createOrder(msg.sender, msg.value, price, cancelLock);
+    /// @dev Deposit for placeOrderEth: wrap the ETH sent with the call into wETH.
+    function _wrapEth(uint256 amount) private {
+        (bool ok,) = address(WETH).call{value: amount}(abi.encodeWithSignature("deposit()"));
+        if (!ok) revert WrapFailed();
     }
 }
