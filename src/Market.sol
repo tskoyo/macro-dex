@@ -167,9 +167,9 @@ contract Market is ReentrancyGuard {
     /// @notice Place an order with base tokens you already hold. Approve this contract first.
     /// @param amount Base token amount, in its smallest unit. Multiple of amountStep.
     /// @param price  Whole quote units per 1 whole base unit.
-    /// @param cancelLock Anti-spoofing delay before a farmer may cancel, e.g. 24 hours.
-    function placeOrder(uint256 amount, uint256 price, uint256 cancelLock) external nonReentrant returns (uint256 id) {
-        id = _placeOrder(amount, price, cancelLock, _pullBase);
+    /// @param reclaimLock Anti-spoofing delay before a farmer may reclaim, e.g. 24 hours.
+    function placeOrder(uint256 amount, uint256 price, uint256 reclaimLock) external nonReentrant returns (uint256 id) {
+        id = _placeOrder(amount, price, reclaimLock, _pullBase);
     }
 
     // ------------------------------------------------------------------
@@ -281,7 +281,7 @@ contract Market is ReentrancyGuard {
 
         // Measure what actually arrived. A fee-on-transfer or rebasing token would
         // deliver less than `amount`, which would leave the contract short later.
-        // We refuse those tokens here rather than discover the shortfall at cancel time.
+        // We refuse those tokens here rather than discover the shortfall at reclaim time.
         uint256 balanceBefore = BASE_TOKEN.balanceOf(address(this));
         deposit(amount);
         uint256 received = BASE_TOKEN.balanceOf(address(this)) - balanceBefore;

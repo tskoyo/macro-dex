@@ -27,11 +27,11 @@ contract WethMarket is Market {
 
     /// @notice Place an order by sending plain ETH. The contract wraps it into wETH.
     /// @param price Whole quote units per 1 ETH, e.g. 2500.
-    /// @param cancelLock Anti-spoofing delay before a farmer may cancel, e.g. 24 hours.
-    function placeOrderEth(uint256 price, uint256 cancelLock) external payable nonReentrant returns (uint256 id) {
+    /// @param reclaimLock Anti-spoofing delay before a farmer may reclaim, e.g. 24 hours.
+    function placeOrderEth(uint256 price, uint256 reclaimLock) external payable nonReentrant returns (uint256 id) {
         // Same path as placeOrder: _placeOrder confirms we really received msg.value wETH,
         // rather than trusting the wrapper. wETH mints 1:1, so this should always hold.
-        id = _placeOrder(msg.value, price, cancelLock, _wrapEth);
+        id = _placeOrder(msg.value, price, reclaimLock, _wrapEth);
     }
 
     /// @dev Deposit for placeOrderEth: wrap the ETH sent with the call into wETH.
