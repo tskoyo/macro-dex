@@ -115,24 +115,24 @@ contract WethMarketTest is MarketTestBase {
         assertEq(quote.balanceOf(farmer), 3000 ether);
     }
 
-    function test_cancel_returnsWethNotEth() public {
+    function test_reclaim_returnsWethNotEth() public {
         uint256 farmerEthBefore = farmer.balance;
         uint256 id = _placeEth(1 ether, price);
         vm.warp(block.timestamp + LOCK + 1);
 
         vm.prank(farmer);
-        market.cancel(id);
+        market.reclaim(id);
 
         assertEq(weth.balanceOf(farmer), 1 ether, "farmer gets WETH back");
         assertEq(farmer.balance, farmerEthBefore - 1 ether, "no raw ETH sent");
     }
 
-    function test_placeOrderEth_revertsOnInvalidCancelLock() public {
-        vm.expectRevert(Market.InvalidCancelLock.selector);
+    function test_placeOrderEth_revertsOnInvalidReclaimLock() public {
+        vm.expectRevert(Market.InvalidReclaimLock.selector);
         vm.prank(farmer);
         wethMarket.placeOrderEth{value: 1 ether}(price, LOCK - 1);
 
-        vm.expectRevert(Market.InvalidCancelLock.selector);
+        vm.expectRevert(Market.InvalidReclaimLock.selector);
         vm.prank(farmer);
         wethMarket.placeOrderEth{value: 1 ether}(price, 0);
     }
