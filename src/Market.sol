@@ -272,12 +272,12 @@ contract Market is ReentrancyGuard {
     /// @dev The only way to create an order. Every placeOrder* entry point must come through here,
     ///      so none of them can skip the checks or the received-amount guard.
     /// @param deposit Brings `amount` base tokens into this contract, e.g. _pullBase.
-    function _placeOrder(uint256 amount, uint256 price, uint256 cancelLock, function(uint256) internal deposit)
+    function _placeOrder(uint256 amount, uint256 price, uint256 reclaimLock, function(uint256) internal deposit)
         internal
         returns (uint256 id)
     {
         _checkAmountAndPrice(amount, price);
-        _checkCancelLock(cancelLock);
+        _checkReclaimLock(reclaimLock);
 
         // Measure what actually arrived. A fee-on-transfer or rebasing token would
         // deliver less than `amount`, which would leave the contract short later.
@@ -289,7 +289,7 @@ contract Market is ReentrancyGuard {
             revert UnexpectedTransferAmount(amount, received);
         }
 
-        id = _createOrder(msg.sender, amount, price, cancelLock);
+        id = _createOrder(msg.sender, amount, price, reclaimLock);
     }
 
     /// @dev Deposit for placeOrder: pull base tokens the farmer approved.
@@ -297,7 +297,7 @@ contract Market is ReentrancyGuard {
         BASE_TOKEN.safeTransferFrom(msg.sender, address(this), amount);
     }
 
-    function _createOrder(address farmer, uint256 amount, uint256 price, uint256 cancelLock)
+    function _createOrder(address farmer, uint256 amount, uint256 price, uint256 reclaimLock)
         private
         returns (uint256 id)
     {
