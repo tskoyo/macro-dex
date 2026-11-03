@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Market} from "../src/Market.sol";
 import {WethMarket} from "../src/WethMarket.sol";
-import {MockWETH, MockToken} from "../src/Mocks.sol";
+import {MockWETH, MockToken, MockShortWETH, MockRevertingWETH} from "../src/Mocks.sol";
 import {MarketTestBase} from "./MarketTestBase.sol";
 
 /// @notice wETH/DAI (18 → 18). Runs the shared suite, plus WethMarket's plain-ETH entry point.
@@ -135,6 +135,22 @@ contract WethMarketTest is MarketTestBase {
         vm.expectRevert(Market.InvalidReclaimLock.selector);
         vm.prank(farmer);
         wethMarket.placeOrderEth{value: 1 ether}(price, 0);
+    }
+
+    function test_placeOrderEth_revertsWhenWethMintsShort() public {
+        WethMarket m = new WethMarket(new MockShortWETH(), quote, 18, step);
+
+        vm.expectRevert(abi.encodeWithSelector(Market.UnexpectedTransferAmount.selector, 1 ether, 1 ether - 1));
+        vm.prank(farmer);
+        m.placeOrderEth{value: 1 ether}(price, LOCK);
+    }
+
+    function test_placeOrderEth_revertsWhenWrapFails() public {
+        WethMarket m = new WethMarket(new MockRevertingWETH(), quote, 18, step);
+
+        vm.expectRevert(WethMarket.WrapFailed.selector);
+        vm.prank(farmer);
+        m.placeOrderEth{value: 1 ether}(price, LOCK);
     }
 
     function test_rawEthTransferIsRejected() public {
