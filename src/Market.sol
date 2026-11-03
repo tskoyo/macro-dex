@@ -7,7 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 /// @title Farmer's Market (generic pair)
 /// @notice Farmers lock a "base" token at a fixed whole-number price in a "quote" token.
-///         Anyone can buy a whole order at once. The farmer can't cancel for a fixed period.
+///         Anyone can buy a whole order at once. The farmer can't reclaim for a fixed period.
 /// @dev No admin, no fees, no upgrades. One deployed instance per pair.
 ///      For a pair where the base token is wETH, deploy WethMarket instead, which adds
 ///      a convenience function for paying in plain ETH.
@@ -21,7 +21,7 @@ contract Market is ReentrancyGuard {
     enum OrderStatus {
         Open,
         Filled,
-        Cancelled
+        Reclaimed
     }
 
     /// @dev Field order is chosen so farmer + createdAt + status share one storage slot.
@@ -31,7 +31,7 @@ contract Market is ReentrancyGuard {
         uint256 price; // Whole quote units per 1 whole base unit, e.g. 2500.
         address farmer; // The seller.
         uint40 createdAt; // Block timestamp when placed.
-        uint256 cancelLock; // Seconds after createdAt before the farmer may cancel.
+        uint256 reclaimLock; // Seconds after createdAt before the farmer may reclaim.
         OrderStatus status;
     }
 
@@ -39,7 +39,7 @@ contract Market is ReentrancyGuard {
     // Settings (fixed forever at deploy)
     // ------------------------------------------------------------------
 
-    /// @notice Minimum and maximum cancel lock, in seconds.
+    /// @notice Minimum and maximum reclaim lock, in seconds.
     uint256 constant ONE_DAY_LOCK = 1 days;
     uint256 constant TWO_DAY_LOCK = 2 days;
     uint256 constant THREE_DAY_LOCK = 3 days;
@@ -84,7 +84,7 @@ contract Market is ReentrancyGuard {
         uint256 cost,
         uint256 filledAt
     );
-    event OrderCancelled(uint256 indexed id, address indexed farmer);
+    event OrderReclaimed(uint256 indexed id, address indexed farmer);
 
     // ------------------------------------------------------------------
     // Errors
@@ -96,7 +96,7 @@ contract Market is ReentrancyGuard {
     error DecimalsMismatch(address token, uint8 expected, uint256 reported);
     error InvalidStep();
     error StepWouldRound(uint256 step, uint256 scaleDiv);
-    error InvalidCancelLock();
+    error InvalidReclaimLock();
     error InvalidAmount();
     error InvalidPrice();
     error CostTooLarge();
@@ -167,14 +167,14 @@ contract Market is ReentrancyGuard {
     /// @notice Place an order with base tokens you already hold. Approve this contract first.
     /// @param amount Base token amount, in its smallest unit. Multiple of amountStep.
     /// @param price  Whole quote units per 1 whole base unit.
-    /// @param cancelLock Anti-spoofing delay before a farmer may cancel, e.g. 24 hours.
-    function placeOrder(uint256 amount, uint256 price, uint256 cancelLock) external nonReentrant returns (uint256 id) {
+    /// @param reclaimLock Anti-spoofing delay before a farmer may reclaim, e.g. 24 hours.
+    function placeOrder(uint256 amount, uint256 price, uint256 reclaimLock) external nonReentrant returns (uint256 id) {
         _checkAmountAndPrice(amount, price);
-        _checkCancelLock(cancelLock);
+        _checkReclaimLock(reclaimLock);
 
         // Measure what actually arrived. A fee-on-transfer or rebasing token would
         // deliver less than `amount`, which would leave the contract short later.
-        // We refuse those tokens here rather than discover the shortfall at cancel time.
+        // We refuse those tokens here rather than discover the shortfall at reclaim time.
         uint256 balanceBefore = BASE_TOKEN.balanceOf(address(this));
         BASE_TOKEN.safeTransferFrom(msg.sender, address(this), amount);
         uint256 received = BASE_TOKEN.balanceOf(address(this)) - balanceBefore;
@@ -182,11 +182,11 @@ contract Market is ReentrancyGuard {
             revert UnexpectedTransferAmount(amount, received);
         }
 
-        id = _createOrder(msg.sender, amount, price, cancelLock);
+        id = _createOrder(msg.sender, amount, price, reclaimLock);
     }
 
     // ------------------------------------------------------------------
-    // Filling and cancelling
+    // Filling and reclaiming
     // ------------------------------------------------------------------
 
     /// @notice Buy a whole order. Approve this contract for costOf(id) quote tokens first.
@@ -210,16 +210,16 @@ contract Market is ReentrancyGuard {
         BASE_TOKEN.safeTransfer(msg.sender, amount);
     }
 
-    /// @notice Take back an unfilled order. Only the farmer, and only after cancelLock.
-    function cancel(uint256 id) external nonReentrant {
+    /// @notice Take back an unfilled order. Only the farmer, and only after reclaimLock.
+    function reclaim(uint256 id) external nonReentrant {
         Order storage order = _openOrder(id);
         if (msg.sender != order.farmer) revert NotFarmer();
 
-        uint256 unlocksAt = uint256(order.createdAt) + uint256(order.cancelLock);
+        uint256 unlocksAt = uint256(order.createdAt) + uint256(order.reclaimLock);
         if (block.timestamp < unlocksAt) revert StillLocked(unlocksAt);
 
-        order.status = OrderStatus.Cancelled;
-        emit OrderCancelled(id, order.farmer);
+        order.status = OrderStatus.Reclaimed;
+        emit OrderReclaimed(id, order.farmer);
 
         BASE_TOKEN.safeTransfer(order.farmer, order.amount);
     }
@@ -263,7 +263,7 @@ contract Market is ReentrancyGuard {
 
     /// @dev Validates an order's amount and price, and guarantees the cost arithmetic can never overflow.
     ///      This matters because an order that is placed but un-fillable would lock
-    ///      the farmer's tokens until the cancel window opens.
+    ///      the farmer's tokens until the reclaim window opens.
     function _checkAmountAndPrice(uint256 amount, uint256 price) internal view {
         if (amount == 0 || amount % AMOUNT_STEP != 0) revert InvalidAmount();
         if (price == 0) revert InvalidPrice();
@@ -272,17 +272,17 @@ contract Market is ReentrancyGuard {
         if (gross > type(uint256).max / SCALE_MUL) revert CostTooLarge();
     }
 
-    /// @dev Validates a cancelLock value. The frontend should offer only the five valid choices.
-    function _checkCancelLock(uint256 cancelLock) internal pure {
+    /// @dev Validates a reclaimLock value. The frontend should offer only the five valid choices.
+    function _checkReclaimLock(uint256 reclaimLock) internal pure {
         if (
-            cancelLock != ONE_DAY_LOCK && cancelLock != TWO_DAY_LOCK && cancelLock != THREE_DAY_LOCK
-                && cancelLock != FOUR_DAY_LOCK && cancelLock != FIVE_DAY_LOCK
+            reclaimLock != ONE_DAY_LOCK && reclaimLock != TWO_DAY_LOCK && reclaimLock != THREE_DAY_LOCK
+                && reclaimLock != FOUR_DAY_LOCK && reclaimLock != FIVE_DAY_LOCK
         ) {
-            revert InvalidCancelLock();
+            revert InvalidReclaimLock();
         }
     }
 
-    function _createOrder(address farmer, uint256 amount, uint256 price, uint256 cancelLock)
+    function _createOrder(address farmer, uint256 amount, uint256 price, uint256 reclaimLock)
         internal
         returns (uint256 id)
     {
@@ -291,7 +291,7 @@ contract Market is ReentrancyGuard {
             id: id,
             amount: amount,
             price: price,
-            cancelLock: cancelLock,
+            reclaimLock: reclaimLock,
             farmer: farmer,
             createdAt: uint40(block.timestamp),
             status: OrderStatus.Open
