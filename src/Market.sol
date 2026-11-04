@@ -60,7 +60,7 @@ contract Market is ReentrancyGuard {
     uint256 public immutable SCALE_MUL;
     uint256 public immutable SCALE_DIV;
 
-    /// @notice Amounts must be a whole multiple of this, in the base token's smallest unit.
+    /// @notice This is the smallest part of the base token that may be sold. Every order's amount must be a multiple of this.
     uint256 public immutable AMOUNT_STEP;
 
     // ------------------------------------------------------------------
