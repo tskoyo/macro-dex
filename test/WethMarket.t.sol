@@ -48,7 +48,7 @@ contract WethMarketTest is MarketTestBase {
     }
 
     function test_constructor_setsWeth() public view {
-        assertEq(address(wethMarket.WETH()), address(weth));
+        assertEq(address(wethMarket.BASE_TOKEN()), address(weth));
     }
 
     function test_constructor_revertsOnZeroWeth() public {

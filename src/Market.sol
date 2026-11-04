@@ -31,7 +31,7 @@ contract Market is ReentrancyGuard {
         uint256 price; // Whole quote units per 1 whole base unit, e.g. 2500.
         address farmer; // The seller.
         uint40 createdAt; // Block timestamp when placed.
-        uint256 reclaimLock; // Seconds after createdAt before the farmer may reclaim.
+        uint40 reclaimLock; // Seconds after createdAt before the farmer may reclaim.
         OrderStatus status;
     }
 
@@ -39,7 +39,7 @@ contract Market is ReentrancyGuard {
     // Settings (fixed forever at deploy)
     // ------------------------------------------------------------------
 
-    /// @notice Minimum and maximum reclaim lock, in seconds.
+    /// @dev The reclaimLock is a delay to prevent spoofing. The frontend offers five choices.
     uint256 constant ONE_DAY_LOCK = 1 days;
     uint256 constant TWO_DAY_LOCK = 2 days;
     uint256 constant THREE_DAY_LOCK = 3 days;
@@ -168,7 +168,7 @@ contract Market is ReentrancyGuard {
     /// @param amount Base token amount, in its smallest unit. Multiple of amountStep.
     /// @param price  Whole quote units per 1 whole base unit.
     /// @param reclaimLock Anti-spoofing delay before a farmer may reclaim, e.g. 24 hours.
-    function placeOrder(uint256 amount, uint256 price, uint256 reclaimLock) external nonReentrant returns (uint256 id) {
+    function placeOrder(uint256 amount, uint256 price, uint40 reclaimLock) external nonReentrant returns (uint256 id) {
         id = _placeOrder(amount, price, reclaimLock, _pullBase);
     }
 
@@ -272,7 +272,7 @@ contract Market is ReentrancyGuard {
     /// @dev The only way to create an order. Every placeOrder* entry point must come through here,
     ///      so none of them can skip the checks or the received-amount guard.
     /// @param deposit Brings `amount` base tokens into this contract, e.g. _pullBase.
-    function _placeOrder(uint256 amount, uint256 price, uint256 reclaimLock, function(uint256) internal deposit)
+    function _placeOrder(uint256 amount, uint256 price, uint40 reclaimLock, function(uint256) internal deposit)
         internal
         returns (uint256 id)
     {
@@ -297,7 +297,7 @@ contract Market is ReentrancyGuard {
         BASE_TOKEN.safeTransferFrom(msg.sender, address(this), amount);
     }
 
-    function _createOrder(address farmer, uint256 amount, uint256 price, uint256 reclaimLock)
+    function _createOrder(address farmer, uint256 amount, uint256 price, uint40 reclaimLock)
         private
         returns (uint256 id)
     {

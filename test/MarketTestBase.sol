@@ -12,8 +12,8 @@ import {MockToken, MockFeeToken} from "../src/Mocks.sol";
 ///      Amounts and prices are never hard-coded: they come from `unit`, `step` and `price`,
 ///      and expected costs are worked out independently of the contract's scale factors.
 abstract contract MarketTestBase is Test {
-    uint256 constant LOCK = 24 hours; // default reclaim lock for tests that don't care about it
-    uint256 constant LONG_AFTER = 365 days; // "well past unlock", for tests that only need the lock gone
+    uint40 constant LOCK = 24 hours; // default reclaim lock for tests that don't care about it
+    uint40 constant LONG_AFTER = 365 days; // "well past unlock", for tests that only need the lock gone
 
     // Pair config, set by the subclass in _deploy().
     IERC20 baseToken;
@@ -79,7 +79,7 @@ abstract contract MarketTestBase is Test {
     }
 
     /// @dev Place an order as `farmer`. Pass `lock` only when the test is about the lock.
-    function createOrder(uint256 amount, uint256 price_, uint256 lock) internal returns (uint256 id) {
+    function createOrder(uint256 amount, uint256 price_, uint40 lock) internal returns (uint256 id) {
         _fundBase(farmer, amount);
         vm.prank(farmer);
         id = market.placeOrder(amount, price_, lock);
@@ -223,7 +223,7 @@ abstract contract MarketTestBase is Test {
     }
 
     function test_placeOrder_revertsOnInvalidReclaimLock() public {
-        uint256[5] memory bad = [uint256(0), 1 days - 1, 1 days + 1, 36 hours, 6 days];
+        uint40[5] memory bad = [uint40(0), 1 days - 1, 1 days + 1, 36 hours, 6 days];
         _fundBase(farmer, unit);
 
         for (uint256 i; i < bad.length; ++i) {
@@ -513,8 +513,8 @@ abstract contract MarketTestBase is Test {
     }
 
     /// @dev Every allowed lock length: locked one second before, reclaimable exactly at unlock.
-    function testFuzz_reclaim_eachAllowedLock(uint256 days_) public {
-        uint256 lock = bound(days_, 1, 5) * 1 days;
+    function testFuzz_reclaim_eachAllowedLock(uint40 days_) public {
+        uint40 lock = uint40(bound(days_, 1, 5) * 1 days);
         uint256 id = createOrder(unit, price, lock);
         uint256 unlocksAt = block.timestamp + lock;
         assertEq(market.getOrder(id).reclaimLock, lock);
