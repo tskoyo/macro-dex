@@ -393,7 +393,7 @@
             "function getOrder(uint256 id) view returns (tuple(uint256 id, uint256 amount, uint256 price, address farmer, uint40 createdAt, uint256 reclaimLock, uint8 status))",
             "function costOf(uint256 id) view returns (uint256)",
             "function nextOrderId() view returns (uint256)",
-            "function AMOUNT_STEP() view returns (uint256)",
+            "function LOT_SIZE() view returns (uint256)",
             "function SCALE_MUL() view returns (uint256)",
             "function SCALE_DIV() view returns (uint256)",
             "error ZeroAddress()", "error SameToken()", "error DecimalsOutOfRange()",
@@ -579,7 +579,7 @@
                 const net = await provider.getNetwork();
                 const m = new ethers.Contract(addrs.market, MARKET_ABI, provider);
                 let step;
-                [step, scaleMul, scaleDiv] = await Promise.all([m.AMOUNT_STEP(), m.SCALE_MUL(), m.SCALE_DIV()]);
+                [step, scaleMul, scaleDiv] = await Promise.all([m.LOT_SIZE(), m.SCALE_MUL(), m.SCALE_DIV()]);
                 $("step").textContent = fmt(step);
                 $("chainInfo").innerHTML = `chain ${net.chainId} · market <span class="mono">${short(addrs.market)}</span>`;
                 $("account").innerHTML = accounts.map((a, i) => `<option value="${a}">#${i} ${a}</option>`).join("");

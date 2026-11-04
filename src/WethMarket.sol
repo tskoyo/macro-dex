@@ -15,9 +15,9 @@ contract WethMarket is Market {
     /// @param weth_            The official wETH contract. Always 18 decimals.
     /// @param quoteToken_      DAI, USDC, USDT, ...
     /// @param quoteDecimals_   Decimals of the quote token. Cross-checked in Market.
-    /// @param amountStep_      e.g. 0.01 ether.
-    constructor(IERC20 weth_, IERC20 quoteToken_, uint8 quoteDecimals_, uint256 amountStep_)
-        Market(weth_, quoteToken_, 18, quoteDecimals_, amountStep_)
+    /// @param lotSize_      e.g. 0.01 ether.
+    constructor(IERC20 weth_, IERC20 quoteToken_, uint8 quoteDecimals_, uint256 lotSize_)
+        Market(weth_, quoteToken_, 18, quoteDecimals_, lotSize_)
     {}
 
     /// @notice Place an order by sending plain ETH. The contract wraps it into wETH.

@@ -61,7 +61,7 @@ contract Market is ReentrancyGuard {
     uint256 public immutable SCALE_DIV;
 
     /// @notice This is the smallest part of the base token that may be sold. Every order's amount must be a multiple of this.
-    uint256 public immutable AMOUNT_STEP;
+    uint256 public immutable LOT_SIZE;
 
     // ------------------------------------------------------------------
     // Storage
@@ -115,8 +115,8 @@ contract Market is ReentrancyGuard {
     /// @param quoteToken_     The token used to pay (DAI, USDC, USDT, ...).
     /// @param baseDecimals_   Decimals of the base token. Cross-checked below.
     /// @param quoteDecimals_  Decimals of the quote token. Cross-checked below.
-    /// @param amountStep_     Order sizes must be a multiple of this, e.g. 0.01 ether.
-    constructor(IERC20 baseToken_, IERC20 quoteToken_, uint8 baseDecimals_, uint8 quoteDecimals_, uint256 amountStep_) {
+    /// @param lotSize_     Order sizes must be a multiple of this, e.g. 0.01 ether.
+    constructor(IERC20 baseToken_, IERC20 quoteToken_, uint8 baseDecimals_, uint8 quoteDecimals_, uint256 lotSize_) {
         if (address(baseToken_) == address(0) || address(quoteToken_) == address(0)) {
             revert ZeroAddress();
         }
@@ -140,16 +140,16 @@ contract Market is ReentrancyGuard {
             div = 10 ** uint256(baseDecimals_ - quoteDecimals_);
         }
 
-        if (amountStep_ == 0) revert InvalidStep();
+        if (lotSize_ == 0) revert InvalidStep();
 
         // THE IMPORTANT CHECK.
-        // Every valid amount is k * amountStep. So every cost is
-        //     k * amountStep * price * mul / div.
-        // If div divides amountStep exactly, the remainder is always zero,
+        // Every valid amount is k * lotSize. So every cost is
+        //     k * lotSize * price * mul / div.
+        // If div divides lotSize exactly, the remainder is always zero,
         // for every k and every price. No rounding, ever. If it doesn't divide
         // exactly, this market would quietly lose dust on some trades, so we
         // refuse to exist at all.
-        if (amountStep_ % div != 0) revert StepWouldRound(amountStep_, div);
+        if (lotSize_ % div != 0) revert StepWouldRound(lotSize_, div);
 
         BASE_TOKEN = baseToken_;
         QUOTE_TOKEN = quoteToken_;
@@ -157,7 +157,7 @@ contract Market is ReentrancyGuard {
         QUOTE_DECIMALS = quoteDecimals_;
         SCALE_MUL = mul;
         SCALE_DIV = div;
-        AMOUNT_STEP = amountStep_;
+        LOT_SIZE = lotSize_;
     }
 
     // ------------------------------------------------------------------
@@ -165,7 +165,7 @@ contract Market is ReentrancyGuard {
     // ------------------------------------------------------------------
 
     /// @notice Place an order with base tokens you already hold. Approve this contract first.
-    /// @param amount Base token amount, in its smallest unit. Multiple of amountStep.
+    /// @param amount Base token amount, in its smallest unit. Multiple of lotSize.
     /// @param price  Whole quote units per 1 whole base unit.
     /// @param reclaimLock Anti-spoofing delay before a farmer may reclaim, e.g. 24 hours.
     function placeOrder(uint256 amount, uint256 price, uint40 reclaimLock) external nonReentrant returns (uint256 id) {
@@ -243,7 +243,7 @@ contract Market is ReentrancyGuard {
     ///      Example, wETH/USDC (18 and 6): scaleMul = 1, scaleDiv = 1e12.
     ///          0.5e18 * 2500 / 1e12 = 1250e6    = 1,250 USDC
     ///      The divide is exact for every valid order, because the constructor
-    ///      refused to deploy unless scaleDiv divides amountStep exactly.
+    ///      refused to deploy unless scaleDiv divides lotSize exactly.
     function _costOf(uint256 amount, uint256 price) internal view returns (uint256) {
         return (amount * price * SCALE_MUL) / SCALE_DIV;
     }
@@ -252,7 +252,7 @@ contract Market is ReentrancyGuard {
     ///      This matters because an order that is placed but un-fillable would lock
     ///      the farmer's tokens until the reclaim window opens.
     function _checkAmountAndPrice(uint256 amount, uint256 price) internal view {
-        if (amount == 0 || amount % AMOUNT_STEP != 0) revert InvalidAmount();
+        if (amount == 0 || amount % LOT_SIZE != 0) revert InvalidAmount();
         if (price == 0) revert InvalidPrice();
         if (price > type(uint256).max / amount) revert CostTooLarge();
         uint256 gross = amount * price;

@@ -21,7 +21,7 @@ abstract contract MarketTestBase is Test {
     Market market;
     uint8 baseDecimals;
     uint8 quoteDecimals;
-    uint256 step; // amountStep the market is deployed with
+    uint256 step; // lotSize the market is deployed with
     uint256 price; // a realistic price for the pair, in whole quote units
 
     /// @dev One whole base token, in its smallest unit (1e18 for wETH, 1e8 for wBTC).
@@ -122,7 +122,7 @@ abstract contract MarketTestBase is Test {
         assertEq(address(market.QUOTE_TOKEN()), address(quote));
         assertEq(market.BASE_DECIMALS(), baseDecimals);
         assertEq(market.QUOTE_DECIMALS(), quoteDecimals);
-        assertEq(market.AMOUNT_STEP(), step);
+        assertEq(market.LOT_SIZE(), step);
         assertEq(market.nextOrderId(), 0);
 
         if (quoteDecimals >= baseDecimals) {
