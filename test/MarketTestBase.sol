@@ -192,7 +192,7 @@ abstract contract MarketTestBase is Test {
         _fundBase(farmer, unit);
 
         vm.expectEmit(address(market));
-        emit Market.OrderPlaced(0, farmer, unit, price, block.timestamp);
+        emit Market.OrderPlaced(0, farmer, LOCK, unit, price, block.timestamp);
         vm.prank(farmer);
         market.placeOrder(unit, price, LOCK);
     }

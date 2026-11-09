@@ -80,7 +80,7 @@ contract WethMarketTest is MarketTestBase {
 
     function test_placeOrderETH_emitsOrderPlaced() public {
         vm.expectEmit(address(market));
-        emit Market.OrderPlaced(0, farmer, 1 ether, price, block.timestamp);
+        emit Market.OrderPlaced(0, farmer, LOCK, 1 ether, price, block.timestamp);
         _placeEth(1 ether, price);
     }
 

@@ -386,11 +386,11 @@
         const DAY = 86400n;
 
         const MARKET_ABI = [
-            "function placeOrderEth(uint256 price, uint256 reclaimLock) payable returns (uint256)",
-            "function placeOrder(uint256 amount, uint256 price, uint256 reclaimLock) returns (uint256)",
+            "function placeOrderEth(uint256 price, uint40 reclaimLock) payable returns (uint256)",
+            "function placeOrder(uint256 amount, uint256 price, uint40 reclaimLock) returns (uint256)",
             "function fill(uint256 id)",
             "function reclaim(uint256 id)",
-            "function getOrder(uint256 id) view returns (tuple(uint256 id, uint256 amount, uint256 price, address farmer, uint40 createdAt, uint256 reclaimLock, uint8 status))",
+            "function getOrder(uint256 id) view returns (tuple(uint256 id, uint256 amount, uint256 price, address farmer, uint40 createdAt, uint40 reclaimLock, uint8 status))",
             "function costOf(uint256 id) view returns (uint256)",
             "function nextOrderId() view returns (uint256)",
             "function LOT_SIZE() view returns (uint256)",

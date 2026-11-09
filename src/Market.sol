@@ -74,7 +74,10 @@ contract Market is ReentrancyGuard {
     // Events (the public fill history)
     // ------------------------------------------------------------------
 
-    event OrderPlaced(uint256 indexed id, address indexed farmer, uint256 amount, uint256 price, uint256 createdAt);
+    event OrderPlaced(
+        uint256 indexed id, address indexed farmer, uint40 reclaimLock, uint256 amount, uint256 price, uint256 createdAt
+    );
+
     event OrderFilled(
         uint256 indexed id,
         address indexed farmer,
@@ -311,7 +314,7 @@ contract Market is ReentrancyGuard {
             createdAt: uint40(block.timestamp),
             status: OrderStatus.Open
         });
-        emit OrderPlaced(id, farmer, amount, price, block.timestamp);
+        emit OrderPlaced(id, farmer, reclaimLock, amount, price, block.timestamp);
     }
 
     function _openOrder(uint256 id) private view returns (Order storage order) {
