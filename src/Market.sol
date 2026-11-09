@@ -7,7 +7,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 /// @title Farmer's Market (generic pair)
 /// @notice Farmers lock a "base" token at a fixed whole-number price in a "quote" token.
-///         Anyone can buy a whole order at once. The farmer can't reclaim for a fixed period.
+///         Anyone can buy a whole order at once. The farmer can't reclaim until the lock
+///         they chose (1 to 5 days) has passed.
 /// @dev No admin, no fees, no upgrades. One deployed instance per pair.
 ///      For a pair where the base token is wETH, deploy WethMarket instead, which adds
 ///      a convenience function for paying in plain ETH.
@@ -24,7 +25,7 @@ contract Market is ReentrancyGuard {
         Reclaimed
     }
 
-    /// @dev Field order is chosen so farmer + createdAt + status share one storage slot.
+    /// @dev Field order is chosen so farmer + createdAt + reclaimLock + status share one storage slot.
     struct Order {
         uint256 id; // Same as the mapping key; kept for easy reading.
         uint256 amount; // Base token amount, in the base token's smallest unit.
