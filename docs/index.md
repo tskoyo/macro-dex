@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: Farmer's Market
+  name: Macro DEX
   text: Sell tokens at a fixed price.
   tagline: Farmers set a price and lock their tokens. Buyers take the whole order in one step. No admin, no fees, no surprises.
   actions:
