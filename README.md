@@ -1,66 +1,16 @@
-## Foundry
+# Farmer's Market
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Sell a token at a fixed price. Farmers lock tokens at a whole-number price; buyers take the whole order in one step; farmers can reclaim after a 1–5 day lock. No admin, no fees, no upgrades.
 
-Foundry consists of:
+**Docs:** https://tskoyo.github.io/macro-dex/ (source in [`docs/`](docs))
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## Quick start
 
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
+```sh
+make dev    # local chain + deploy + demo UI at http://localhost:5173
+make test   # run tests
+make docs   # docs site at http://localhost:5173/macro-dex/
+make help   # all commands
 ```
 
-### Test
-
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+Requires [Foundry](https://book.getfoundry.sh/), Python 3, and Node 18+ (docs only).

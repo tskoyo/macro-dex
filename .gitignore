@@ -8,7 +8,9 @@ out/
 /broadcast/**/dry-run/
 
 # Docs
-docs/
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
 
 # Dotenv file
 .env

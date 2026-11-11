@@ -9,7 +9,7 @@ UI_PORT     ?= 5173
 PRIVATE_KEY ?= 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 
 .DEFAULT_GOAL := help
-.PHONY: help build test fmt clean anvil deploy ui dev
+.PHONY: help build test fmt clean anvil deploy ui dev docs
 
 help: ## List available commands
 	@grep -hE '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
@@ -38,3 +38,7 @@ ui: ## Serve the UI at http://localhost:UI_PORT
 
 dev: ## All-in-one: fresh anvil + deploy + UI (Ctrl+C stops everything)
 	./ui/dev.sh
+
+docs: ## Run the docs site locally (installs deps on first run)
+	@[ -d docs/node_modules ] || npm --prefix docs install
+	npm --prefix docs run dev
