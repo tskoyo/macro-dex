@@ -40,6 +40,14 @@
             box-sizing: border-box;
         }
 
+        [hidden] {
+            display: none !important;
+        }
+
+        a {
+            color: inherit;
+        }
+
         body {
             margin: 0;
             background: var(--bg);
@@ -286,18 +294,22 @@
         <header>
             <div>
                 <h1>🧑‍🌾 Farmers Market</h1>
-                <div class="sub">Local anvil · <span id="chainInfo">connecting…</span></div>
+                <div class="sub"><span id="netName">…</span> · <span id="chainInfo">connecting…</span></div>
             </div>
             <div class="row">
                 <span class="sub">Chain time: <b id="chainTime">–</b></span>
-                <button id="warpBtn" title="evm_increaseTime + evm_mine">⏩ +24h</button>
+                <button id="warpBtn" title="evm_increaseTime + evm_mine" hidden>⏩ +24h</button>
             </div>
         </header>
 
         <div class="grid">
             <section class="panel">
                 <h2>Account</h2>
-                <select id="account"></select>
+                <select id="account" hidden></select>
+                <div class="row" id="walletRow" hidden>
+                    <button class="primary" id="connectBtn">Connect wallet</button>
+                    <span class="mono" id="walletAddr"></span>
+                </div>
                 <div class="stats">
                     <div class="stat"><b id="balEth">–</b><span>ETH</span></div>
                     <div class="stat"><b id="balWeth">–</b><span>WETH</span></div>
@@ -305,7 +317,7 @@
                 </div>
                 <div class="row">
                     <button id="mintDaiBtn">Mint 10,000 DAI</button>
-                    <button id="wrapBtn">Wrap 1 ETH → WETH</button>
+                    <button id="wrapBtn">Wrap <span id="wrapAmt">1</span> ETH → WETH</button>
                 </div>
             </section>
 
@@ -367,7 +379,7 @@
                     </table>
                 </div>
                 <div class="hint">Buying approves DAI for the exact cost, then calls <span class="mono">fill</span>.
-                    Farmers can reclaim once the order's lock (1–5 days) has passed — use ⏩ to skip ahead.</div>
+                    Farmers can reclaim once the order's lock (1–5 days) has passed<span id="warpHint" hidden> — use ⏩ to skip ahead</span>.</div>
             </section>
 
             <section class="panel full">
@@ -380,7 +392,21 @@
     <script type="module">
         import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js";
 
-        const RPC = "http://127.0.0.1:8545";
+        // Network: ?network=local|sepolia, otherwise local on localhost and Sepolia everywhere else.
+        const NETWORKS = {
+            local: {
+                name: "Local anvil", chainId: 31337n, rpc: "http://127.0.0.1:8545", poll: 1000,
+                deployments: "deployments.json", dev: true, wrap: "1", amount: "1",
+            },
+            sepolia: {
+                name: "Sepolia", chainId: 11155111n, rpc: "https://ethereum-sepolia-rpc.publicnode.com", poll: 4000,
+                deployments: "deployments.sepolia.json", dev: false, wrap: "0.1", amount: "0.01",
+                explorer: "https://sepolia.etherscan.io",
+            },
+        };
+        const isLocalHost = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+        const NET = NETWORKS[new URLSearchParams(location.search).get("network")] ?? (isLocalHost ? NETWORKS.local : NETWORKS.sepolia);
+        const RPC = NET.rpc;
         const STATUS = ["Open", "Filled", "Reclaimed"];
 
         const DAY = 86400n;
@@ -415,22 +441,32 @@
         ];
 
         const $ = (id) => document.getElementById(id);
-        const provider = new ethers.JsonRpcProvider(RPC, undefined, { pollingInterval: 1000 });
-        let addrs, accounts = [], me, signer, market, weth, dai, payWith = "eth", busy = false;
+        // Reads go through `provider` (anvil or a public RPC); writes go through `signer`
+        // (an unlocked anvil account locally, the browser wallet on Sepolia).
+        const provider = new ethers.JsonRpcProvider(RPC, undefined, { pollingInterval: NET.poll });
+        let addrs, accounts = [], me, signer, payWith = "eth", busy = false;
+        let rMarket, rWeth, rDai; // read-only
+        let market, weth, dai;    // signer-bound, set by ready()
         let scaleMul = 1n, scaleDiv = 1n; // read from the market on boot; cost = amount * price * mul / div
 
         const short = (a) => a.slice(0, 6) + "…" + a.slice(-4);
         const fmt = (wei, dp = 4) => Number(ethers.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: dp });
         const fmtTime = (ts) => new Date(Number(ts) * 1000).toLocaleString();
 
-        function log(msg, cls = "") {
+        function log(msg, cls = "", href) {
             const li = document.createElement("li");
             li.className = cls;
             li.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            if (href) {
+                const a = document.createElement("a");
+                a.href = href; a.target = "_blank"; a.rel = "noopener"; a.textContent = " ↗";
+                li.append(a);
+            }
             $("log").prepend(li);
         }
 
         function errMsg(e) {
+            if (e?.code === "ACTION_REJECTED" || e?.code === 4001 || e?.error?.code === 4001) return "rejected in wallet";
             if (e?.revert) return `${e.revert.name}(${e.revert.args.map(String).join(", ")})`;
             // Try decoding raw revert data against all known errors.
             const data = e?.data ?? e?.info?.error?.data;
@@ -447,8 +483,10 @@
             busy = true; document.querySelectorAll("button").forEach((b) => (b.disabled = true));
             try {
                 const tx = await fn();
+                const link = NET.explorer && `${NET.explorer}/tx/${tx.hash}`;
+                if (link) log(`${label}: sent, waiting for confirmation…`, "", link);
                 const rc = await tx.wait();
-                log(`${label} ✓ (block ${rc.blockNumber}, gas ${rc.gasUsed})`, "ok");
+                log(`${label} ✓ (block ${rc.blockNumber}, gas ${rc.gasUsed})`, "ok", link);
                 return rc;
             } catch (e) {
                 log(`${label} ✗ ${errMsg(e)}`, "err");
@@ -459,12 +497,72 @@
         }
 
         function setAccount(addr) {
-            me = addr;
-            signer = new ethers.JsonRpcSigner(provider, addr); // anvil accounts are unlocked
-            market = new ethers.Contract(addrs.market, MARKET_ABI, signer);
-            weth = new ethers.Contract(addrs.weth, ERC20_ABI, signer);
-            dai = new ethers.Contract(addrs.dai, ERC20_ABI, signer);
+            me = addr ? ethers.getAddress(addr) : undefined;
+            signer = undefined;
+            if (!NET.dev) {
+                $("connectBtn").hidden = !!me;
+                $("walletAddr").innerHTML = me
+                    ? `<a href="${NET.explorer}/address/${me}" target="_blank" rel="noopener">${me}</a>`
+                    : `<span class="sub">Connect a wallet on ${NET.name} to trade</span>`;
+            }
             refresh();
+        }
+
+        // --- wallet (non-dev networks) ---
+        const chainHex = "0x" + NET.chainId.toString(16);
+
+        async function ensureChain() {
+            const current = BigInt(await window.ethereum.request({ method: "eth_chainId" }));
+            if (current === NET.chainId) return;
+            try {
+                await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chainHex }] });
+            } catch (e) {
+                if (e?.code !== 4902) throw e; // 4902 = chain not added to the wallet yet
+                await window.ethereum.request({
+                    method: "wallet_addEthereumChain", params: [{
+                        chainId: chainHex, chainName: NET.name, rpcUrls: [NET.rpc], blockExplorerUrls: [NET.explorer],
+                        nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
+                    }],
+                });
+            }
+        }
+
+        async function connectWallet() {
+            if (!window.ethereum) {
+                log("No browser wallet found — install MetaMask (or similar) to trade", "err");
+                return false;
+            }
+            const [addr] = await window.ethereum.request({ method: "eth_requestAccounts" });
+            if (!addr) return false;
+            setAccount(addr);
+            log(`Wallet connected: ${me}`, "ok");
+            return true;
+        }
+
+        // Makes sure we can sign: wallet connected, on the right chain, contracts bound to the signer.
+        async function ready() {
+            if (NET.dev) {
+                signer = new ethers.JsonRpcSigner(provider, me); // anvil accounts are unlocked
+            } else {
+                if (!me && !(await connectWallet())) return false;
+                await ensureChain();
+                // Fresh BrowserProvider each time: ethers pins a provider to the chain it saw first.
+                signer = await new ethers.BrowserProvider(window.ethereum).getSigner(me);
+            }
+            market = rMarket.connect(signer);
+            weth = rWeth.connect(signer);
+            dai = rDai.connect(signer);
+            return true;
+        }
+
+        // Wraps a user action: prepare the signer, then run it; surface wallet/chain errors in the log.
+        async function act(fn) {
+            if (busy) return;
+            try {
+                if (await ready()) await fn();
+            } catch (e) {
+                log(errMsg(e), "err");
+            }
         }
 
         async function ensureAllowance(token, name, amount) {
@@ -475,21 +573,23 @@
         }
 
         async function refresh() {
-            if (!market) return;
+            if (!rMarket) return;
             try {
                 const [block, eth, w, d, n] = await Promise.all([
-                    provider.getBlock("latest"), provider.getBalance(me), weth.balanceOf(me), dai.balanceOf(me), market.nextOrderId(),
+                    provider.getBlock("latest"),
+                    me ? provider.getBalance(me) : null, me ? rWeth.balanceOf(me) : null, me ? rDai.balanceOf(me) : null,
+                    rMarket.nextOrderId(),
                 ]);
                 $("chainTime").textContent = fmtTime(block.timestamp);
-                $("balEth").textContent = fmt(eth);
-                $("balWeth").textContent = fmt(w);
-                $("balDai").textContent = fmt(d, 2);
+                $("balEth").textContent = me ? fmt(eth) : "–";
+                $("balWeth").textContent = me ? fmt(w) : "–";
+                $("balDai").textContent = me ? fmt(d, 2) : "–";
 
-                const orders = await Promise.all([...Array(Number(n)).keys()].map((i) => market.getOrder(i)));
+                const orders = await Promise.all([...Array(Number(n)).keys()].map((i) => rMarket.getOrder(i)));
                 const openOnly = $("openOnly").checked;
                 const rows = orders.reverse().filter((o) => !openOnly || Number(o.status) === 0).map((o) => {
                     const status = STATUS[Number(o.status)];
-                    const mine = o.farmer.toLowerCase() === me.toLowerCase();
+                    const mine = !!me && o.farmer.toLowerCase() === me.toLowerCase();
                     const unlocksAt = o.createdAt + o.reclaimLock;
                     const locked = BigInt(block.timestamp) < unlocksAt;
                     let actions = "";
@@ -539,26 +639,31 @@
             catch { return log("Enter a valid amount and a whole-number price", "err"); }
             const lockDays = BigInt($("lock").value), lock = lockDays * DAY;
             const desc = `${fmt(amount)} ${payWith === "eth" ? "ETH" : "WETH"} @ ${price}, ${lockDays}d lock`;
-            if (payWith === "eth") {
-                await send(`Place order ${desc}`, () => market.placeOrderEth(price, lock, { value: amount }));
-            } else {
-                if (!(await ensureAllowance(weth, "WETH", amount))) return;
-                await send(`Place order ${desc}`, () => market.placeOrder(amount, price, lock));
-            }
+            await act(async () => {
+                if (payWith === "eth") {
+                    await send(`Place order ${desc}`, () => market.placeOrderEth(price, lock, { value: amount }));
+                } else {
+                    if (!(await ensureAllowance(weth, "WETH", amount))) return;
+                    await send(`Place order ${desc}`, () => market.placeOrder(amount, price, lock));
+                }
+            });
         };
 
         $("orders").onclick = async (e) => {
             const fillId = e.target.dataset?.fill, reclaimId = e.target.dataset?.reclaim;
             if (fillId !== undefined) {
-                if (!(await ensureAllowance(dai, "DAI", await market.costOf(fillId)))) return;
-                await send(`Buy order #${fillId}`, () => market.fill(fillId));
+                await act(async () => {
+                    if (!(await ensureAllowance(dai, "DAI", await rMarket.costOf(fillId)))) return;
+                    await send(`Buy order #${fillId}`, () => market.fill(fillId));
+                });
             } else if (reclaimId !== undefined) {
-                await send(`Reclaim order #${reclaimId}`, () => market.reclaim(reclaimId));
+                await act(() => send(`Reclaim order #${reclaimId}`, () => market.reclaim(reclaimId)));
             }
         };
 
-        $("mintDaiBtn").onclick = () => send("Mint 10,000 DAI", () => dai.mint(me, ethers.parseEther("10000")));
-        $("wrapBtn").onclick = () => send("Wrap 1 ETH", () => weth.deposit({ value: ethers.parseEther("1") }));
+        $("connectBtn").onclick = () => act(async () => { });
+        $("mintDaiBtn").onclick = () => act(() => send("Mint 10,000 DAI", () => dai.mint(me, ethers.parseEther("10000"))));
+        $("wrapBtn").onclick = () => act(() => send(`Wrap ${NET.wrap} ETH`, () => weth.deposit({ value: ethers.parseEther(NET.wrap) })));
         $("warpBtn").onclick = async () => {
             await provider.send("evm_increaseTime", [86400]);
             await provider.send("evm_mine", []);
@@ -568,27 +673,50 @@
 
         // --- boot ---
         (async () => {
+            $("netName").textContent = NET.name;
+            $("warpBtn").hidden = $("warpHint").hidden = !NET.dev;
+            $("account").hidden = !NET.dev;
+            $("walletRow").hidden = NET.dev;
+            $("wrapAmt").textContent = NET.wrap;
+            $("amount").value = NET.amount;
+
+            let net;
             try {
-                addrs = await (await fetch("deployments.json", { cache: "no-store" })).json();
-                accounts = await provider.send("eth_accounts", []);
+                const res = await fetch(NET.deployments, { cache: "no-store" });
+                if (!res.ok) throw new Error(`${NET.deployments}: HTTP ${res.status}`);
+                addrs = await res.json();
+                net = await provider.getNetwork();
+                if (net.chainId !== NET.chainId) throw new Error(`RPC is on chain ${net.chainId}, expected ${NET.chainId}`);
+                if (NET.dev) accounts = await provider.send("eth_accounts", []);
             } catch (e) {
-                $("chainInfo").textContent = "can't reach anvil at " + RPC + " — is it running?";
+                $("chainInfo").textContent = NET.dev ? "can't reach anvil at " + RPC + " — is it running?" : "can't load " + NET.name;
                 return log(errMsg(e), "err");
             }
             try {
-                const net = await provider.getNetwork();
-                const m = new ethers.Contract(addrs.market, MARKET_ABI, provider);
+                rMarket = new ethers.Contract(addrs.market, MARKET_ABI, provider);
+                rWeth = new ethers.Contract(addrs.weth, ERC20_ABI, provider);
+                rDai = new ethers.Contract(addrs.dai, ERC20_ABI, provider);
                 let step;
-                [step, scaleMul, scaleDiv] = await Promise.all([m.LOT_SIZE(), m.SCALE_MUL(), m.SCALE_DIV()]);
+                [step, scaleMul, scaleDiv] = await Promise.all([rMarket.LOT_SIZE(), rMarket.SCALE_MUL(), rMarket.SCALE_DIV()]);
                 $("step").textContent = fmt(step);
-                $("chainInfo").innerHTML = `chain ${net.chainId} · market <span class="mono">${short(addrs.market)}</span>`;
-                $("account").innerHTML = accounts.map((a, i) => `<option value="${a}">#${i} ${a}</option>`).join("");
-                setAccount(accounts[0]);
+                const marketLabel = `<span class="mono">${short(addrs.market)}</span>`;
+                $("chainInfo").innerHTML = `chain ${net.chainId} · market ` +
+                    (NET.explorer ? `<a href="${NET.explorer}/address/${addrs.market}" target="_blank" rel="noopener">${marketLabel}</a>` : marketLabel);
+                if (NET.dev) {
+                    $("account").innerHTML = accounts.map((a, i) => `<option value="${a}">#${i} ${a}</option>`).join("");
+                    setAccount(accounts[0]);
+                } else {
+                    // Restore an already-authorized wallet without prompting.
+                    const authorized = window.ethereum ? await window.ethereum.request({ method: "eth_accounts" }) : [];
+                    setAccount(authorized[0]);
+                    window.ethereum?.on?.("accountsChanged", (accs) => setAccount(accs[0]));
+                }
                 updateTotal();
                 provider.on("block", refresh);
-                log("Connected to anvil");
+                log(`Connected to ${NET.name}`);
             } catch (e) {
-                $("chainInfo").textContent = "no market at " + (addrs?.market ?? "?") + " — run `make deploy` (or `make dev`)";
+                $("chainInfo").textContent = "no market at " + (addrs?.market ?? "?") +
+                    (NET.dev ? " — run `make deploy` (or `make dev`)" : ` on ${NET.name} — check ${NET.deployments}`);
                 log(errMsg(e), "err");
             }
         })();
