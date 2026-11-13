@@ -1,6 +1,6 @@
-# What is Farmer's Market?
+# What is Macro DEX?
 
-Farmer's Market is a simple place to sell one token for another at a price you choose.
+Macro DEX is a simple place to sell one token for another at a price you choose.
 
 Think of a real farmers market. A farmer brings a crate of apples and puts a price tag on it. A shopper walks by, likes the price, and buys the whole crate. That's it.
 

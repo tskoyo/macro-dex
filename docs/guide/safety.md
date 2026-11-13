@@ -1,6 +1,6 @@
 # Why it's safe
 
-Farmer's Market is deliberately small. Fewer moving parts means fewer things that can go wrong.
+Macro DEX is deliberately small. Fewer moving parts means fewer things that can go wrong.
 
 ## No one is in charge
 
@@ -10,11 +10,11 @@ There is no owner, no admin key, and no upgrade button. Once a market is launche
 
 The farmer receives exactly what the buyer pays. Nothing is skimmed off.
 
-## No rounding, ever
+## No rounding
 
 Different tokens count in different-sized units, a bit like dollars vs. cents. Converting between them can leave tiny leftover crumbs that someone loses.
 
-Farmer's Market avoids this completely. When a market is launched, it checks that its lot size makes every possible trade come out exact. If it wouldn't, the market refuses to launch at all.
+Macro DEX avoids this completely. When a market is launched, it checks that its lot size makes every possible trade come out exact. If it wouldn't, the market refuses to launch at all.
 
 ## Strange tokens are turned away
 

@@ -30,8 +30,5 @@ The order was bought. Finished.
 ### Reclaimed
 The farmer took the order back. Finished.
 
-### wETH
-"Wrapped ETH". The same value as ETH, in the standard token format the market uses. Farmers can send plain ETH and the market wraps it for them.
-
 ### Spoofing
 Posting fake orders to mislead others, then pulling them before anyone can buy. The waiting period prevents this.
