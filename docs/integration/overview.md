@@ -1,6 +1,6 @@
 # Frontend integration: overview
 
-This section shows how a website talks to the market contracts. The examples use [ethers v6](https://docs.ethers.org/v6/), the same library as the demo UI in `ui/index.html`.
+This section shows how a website talks to the market contracts. The examples use [ethers v6](https://docs.ethers.org/v6/).
 
 ## What you need
 
