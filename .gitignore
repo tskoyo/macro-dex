@@ -15,7 +15,7 @@ docs/.vitepress/cache/
 # Dotenv file
 .env
 
-ui/deployments.*
+# ui/deployments.*
 
 .claude
 .vscode
