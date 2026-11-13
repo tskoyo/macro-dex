@@ -19,3 +19,6 @@ ui/deployments.json
 
 .claude
 .vscode
+
+# Anvil accounts dump (make dev)
+anvil-accounts.json
