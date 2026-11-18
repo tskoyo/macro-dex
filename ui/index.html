@@ -313,10 +313,10 @@
                 <div class="stats">
                     <div class="stat"><b id="balEth">–</b><span>ETH</span></div>
                     <div class="stat"><b id="balWeth">–</b><span>WETH</span></div>
-                    <div class="stat"><b id="balDai">–</b><span>DAI</span></div>
+                    <div class="stat"><b id="balQuote">–</b><span class="qsym">DAI</span></div>
                 </div>
                 <div class="row">
-                    <button id="mintDaiBtn">Mint 10,000 DAI</button>
+                    <button id="mintBtn" hidden>Mint 10,000 <span class="qsym">DAI</span></button>
                     <button id="wrapBtn">Wrap <span id="wrapAmt">1</span> ETH → WETH</button>
                 </div>
             </section>
@@ -332,7 +332,7 @@
                 <div class="row">
                     <div class="field"><label for="amount">Amount (ETH, step <span id="step">–</span>)</label><input
                             id="amount" value="1" inputmode="decimal"></div>
-                    <div class="field"><label for="price">Price (whole DAI per ETH)</label><input id="price"
+                    <div class="field"><label for="price">Price (whole <span class="qsym">DAI</span> per ETH)</label><input id="price"
                             value="3000" inputmode="numeric"></div>
                     <div class="field"><label for="lock">Reclaim lock</label>
                         <select id="lock">
@@ -345,7 +345,7 @@
                     </div>
                 </div>
                 <div class="row" style="margin-top:10px; justify-content:space-between">
-                    <span class="sub">Total: <b id="total">–</b> DAI</span>
+                    <span class="sub">Total: <b id="total">–</b> <span class="qsym">DAI</span></span>
                     <button class="primary" id="placeBtn">Place order</button>
                 </div>
             </section>
@@ -364,7 +364,7 @@
                                 <th>Farmer</th>
                                 <th>Amount</th>
                                 <th>Price</th>
-                                <th>Cost (DAI)</th>
+                                <th>Cost (<span class="qsym">DAI</span>)</th>
                                 <th>Created</th>
                                 <th>Unlocks</th>
                                 <th>Status</th>
@@ -378,7 +378,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="hint">Buying approves DAI for the exact cost, then calls <span class="mono">fill</span>.
+                <div class="hint">Buying approves <span class="qsym">DAI</span> for the exact cost, then calls <span class="mono">fill</span>.
                     Farmers can reclaim once the order's lock (1–5 days) has passed<span id="warpHint" hidden> — use ⏩ to skip ahead</span>.</div>
             </section>
 
@@ -436,6 +436,8 @@
             "function approve(address spender, uint256 amount) returns (bool)",
             "function deposit() payable",
             "function mint(address to, uint256 amount)",
+            "function decimals() view returns (uint8)",
+            "function symbol() view returns (string)",
             "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
             "error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)",
         ];
@@ -445,12 +447,14 @@
         // (an unlocked anvil account locally, the browser wallet on Sepolia).
         const provider = new ethers.JsonRpcProvider(RPC, undefined, { pollingInterval: NET.poll });
         let addrs, accounts = [], me, signer, payWith = "eth", busy = false;
-        let rMarket, rWeth, rDai; // read-only
-        let market, weth, dai;    // signer-bound, set by ready()
+        let rMarket, rWeth, rQuote; // read-only
+        let market, weth, quote;    // signer-bound, set by ready()
+        let quoteDecimals = 18, quoteSymbol = "DAI"; // read from the quote token on boot
         let scaleMul = 1n, scaleDiv = 1n; // read from the market on boot; cost = amount * price * mul / div
 
         const short = (a) => a.slice(0, 6) + "…" + a.slice(-4);
         const fmt = (wei, dp = 4) => Number(ethers.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: dp });
+        const fmtQ = (v, dp = 2) => Number(ethers.formatUnits(v, quoteDecimals)).toLocaleString(undefined, { maximumFractionDigits: dp });
         const fmtTime = (ts) => new Date(Number(ts) * 1000).toLocaleString();
 
         function log(msg, cls = "", href) {
@@ -551,7 +555,7 @@
             }
             market = rMarket.connect(signer);
             weth = rWeth.connect(signer);
-            dai = rDai.connect(signer);
+            quote = rQuote.connect(signer);
             return true;
         }
 
@@ -565,10 +569,10 @@
             }
         }
 
-        async function ensureAllowance(token, name, amount) {
+        async function ensureAllowance(token, name, amount, show = fmt) {
             const current = await token.allowance(me, addrs.market);
             if (current >= amount) return true;
-            const rc = await send(`Approve ${fmt(amount)} ${name}`, () => token.approve(addrs.market, amount));
+            const rc = await send(`Approve ${show(amount)} ${name}`, () => token.approve(addrs.market, amount));
             return !!rc;
         }
 
@@ -577,13 +581,13 @@
             try {
                 const [block, eth, w, d, n] = await Promise.all([
                     provider.getBlock("latest"),
-                    me ? provider.getBalance(me) : null, me ? rWeth.balanceOf(me) : null, me ? rDai.balanceOf(me) : null,
+                    me ? provider.getBalance(me) : null, me ? rWeth.balanceOf(me) : null, me ? rQuote.balanceOf(me) : null,
                     rMarket.nextOrderId(),
                 ]);
                 $("chainTime").textContent = fmtTime(block.timestamp);
                 $("balEth").textContent = me ? fmt(eth) : "–";
                 $("balWeth").textContent = me ? fmt(w) : "–";
-                $("balDai").textContent = me ? fmt(d, 2) : "–";
+                $("balQuote").textContent = me ? fmtQ(d) : "–";
 
                 const orders = await Promise.all([...Array(Number(n)).keys()].map((i) => rMarket.getOrder(i)));
                 const openOnly = $("openOnly").checked;
@@ -602,7 +606,7 @@
         <td class="mono ${mine ? "you" : ""}">${mine ? "you" : short(o.farmer)}</td>
         <td>${fmt(o.amount)} ETH</td>
         <td>${o.price.toLocaleString()}</td>
-        <td>${fmt((o.amount * o.price * scaleMul) / scaleDiv, 2)}</td>
+        <td>${fmtQ((o.amount * o.price * scaleMul) / scaleDiv)}</td>
         <td class="sub">${fmtTime(o.createdAt)}</td>
         <td class="sub">${fmtTime(unlocksAt)} (${o.reclaimLock / DAY}d)</td>
         <td><span class="badge ${status}">${status}</span></td>
@@ -653,7 +657,7 @@
             const fillId = e.target.dataset?.fill, reclaimId = e.target.dataset?.reclaim;
             if (fillId !== undefined) {
                 await act(async () => {
-                    if (!(await ensureAllowance(dai, "DAI", await rMarket.costOf(fillId)))) return;
+                    if (!(await ensureAllowance(quote, quoteSymbol, await rMarket.costOf(fillId), fmtQ))) return;
                     await send(`Buy order #${fillId}`, () => market.fill(fillId));
                 });
             } else if (reclaimId !== undefined) {
@@ -662,7 +666,7 @@
         };
 
         $("connectBtn").onclick = () => act(async () => { });
-        $("mintDaiBtn").onclick = () => act(() => send("Mint 10,000 DAI", () => dai.mint(me, ethers.parseEther("10000"))));
+        $("mintBtn").onclick = () => act(() => send(`Mint 10,000 ${quoteSymbol}`, () => quote.mint(me, ethers.parseUnits("10000", quoteDecimals))));
         $("wrapBtn").onclick = () => act(() => send(`Wrap ${NET.wrap} ETH`, () => weth.deposit({ value: ethers.parseEther(NET.wrap) })));
         $("warpBtn").onclick = async () => {
             await provider.send("evm_increaseTime", [86400]);
@@ -678,6 +682,7 @@
             $("account").hidden = !NET.dev;
             $("walletRow").hidden = NET.dev;
             $("wrapAmt").textContent = NET.wrap;
+            $("mintBtn").hidden = !NET.dev; // only the local mock quote token has a public mint
             $("amount").value = NET.amount;
 
             let net;
@@ -695,7 +700,10 @@
             try {
                 rMarket = new ethers.Contract(addrs.market, MARKET_ABI, provider);
                 rWeth = new ethers.Contract(addrs.weth, ERC20_ABI, provider);
-                rDai = new ethers.Contract(addrs.dai, ERC20_ABI, provider);
+                // `quote` key; older local deployments.json files still use `dai`.
+                rQuote = new ethers.Contract(addrs.quote ?? addrs.dai, ERC20_ABI, provider);
+                [quoteDecimals, quoteSymbol] = await Promise.all([rQuote.decimals().then(Number), rQuote.symbol()]);
+                document.querySelectorAll(".qsym").forEach((el) => (el.textContent = quoteSymbol));
                 let step;
                 [step, scaleMul, scaleDiv] = await Promise.all([rMarket.LOT_SIZE(), rMarket.SCALE_MUL(), rMarket.SCALE_DIV()]);
                 $("step").textContent = fmt(step);
