@@ -32,10 +32,12 @@ anvil: ## Run a local chain in the foreground (keep it in its own terminal)
 deploy: ## Deploy mocks + FarmersMarket to RPC_URL and write ui/deployments.json
 	@forge script script/DeployLocal.s.sol --rpc-url $(RPC_URL) --broadcast --private-key $(PRIVATE_KEY)
 
-deploy-sepolia: ## Deploy WethMarket (WETH/PYUSD) to Sepolia, verify, write ui/deployments.sepolia.json
+deploy-sepolia: ## Add a WETH/<token> market on Sepolia: make deploy-sepolia QUOTE=0x… (updates ui/deployments.sepolia.json)
 	@[ -n "$(ETHEREUM_SEPOLIA_RPC_URL)" ] || { echo "Set ETHEREUM_SEPOLIA_RPC_URL in .env"; exit 1; }
-	@[ -n "$(ETHERSCAN_API_KEY)" ] || { echo "Set ETHERSCAN_API_KEY in .env"; exit 1; }
-	forge script script/DeploySepolia.s.sol --rpc-url $(ETHEREUM_SEPOLIA_RPC_URL) --broadcast --private-key $(PRIVATE_KEY) --start-fresh
+	@[ -n "$(QUOTE)" ] || { echo "Usage: make deploy-sepolia QUOTE=<quote token address>"; exit 1; }
+	@rm -f ui/deployments.sepolia.json.next
+	forge script script/DeploySepolia.s.sol --sig "run(address)" $(QUOTE) --rpc-url $(ETHEREUM_SEPOLIA_RPC_URL) --broadcast --private-key $(PRIVATE_KEY) --start-fresh
+	@mv ui/deployments.sepolia.json.next ui/deployments.sepolia.json && echo "Updated ui/deployments.sepolia.json"
 
 ui: ## Serve the UI at http://localhost:UI_PORT
 	@echo "UI → http://localhost:$(UI_PORT)"

@@ -297,6 +297,7 @@
                 <div class="sub"><span id="netName">…</span> · <span id="chainInfo">connecting…</span></div>
             </div>
             <div class="row">
+                <select id="pair" title="Trading pair" style="width:auto" hidden></select>
                 <span class="sub">Chain time: <b id="chainTime">–</b></span>
                 <button id="warpBtn" title="evm_increaseTime + evm_mine" hidden>⏩ +24h</button>
             </div>
@@ -675,6 +676,24 @@
             refresh();
         };
 
+        // Deployments file: { weth, markets: [{ name, quote, market }] }, or an older single
+        // market { weth, quote|dai, market }. Picks ?pair=<name> (default: the first market)
+        // and fills the pair picker; switching pairs reloads the page with the new ?pair.
+        function pickMarket(data) {
+            const markets = data.markets ?? [{ name: "", quote: data.quote ?? data.dai, market: data.market }];
+            if (!markets.length) throw new Error(`${NET.deployments} lists no markets — deploy one first`);
+            const wanted = new URLSearchParams(location.search).get("pair");
+            const chosen = markets.find((m) => m.name === wanted) ?? markets[0];
+            $("pair").replaceChildren(...markets.map((m) => new Option(m.name, m.name, false, m === chosen)));
+            $("pair").hidden = markets.length < 2;
+            $("pair").onchange = (e) => {
+                const q = new URLSearchParams(location.search);
+                q.set("pair", e.target.value);
+                location.search = q.toString();
+            };
+            return { weth: data.weth, ...chosen };
+        }
+
         // --- boot ---
         (async () => {
             $("netName").textContent = NET.name;
@@ -689,7 +708,7 @@
             try {
                 const res = await fetch(NET.deployments, { cache: "no-store" });
                 if (!res.ok) throw new Error(`${NET.deployments}: HTTP ${res.status}`);
-                addrs = await res.json();
+                addrs = pickMarket(await res.json());
                 net = await provider.getNetwork();
                 if (net.chainId !== NET.chainId) throw new Error(`RPC is on chain ${net.chainId}, expected ${NET.chainId}`);
                 if (NET.dev) accounts = await provider.send("eth_accounts", []);
@@ -721,7 +740,7 @@
                 }
                 updateTotal();
                 provider.on("block", refresh);
-                log(`Connected to ${NET.name}`);
+                log(`Connected to ${NET.name}${addrs.name ? " · " + addrs.name : ""}`);
             } catch (e) {
                 $("chainInfo").textContent = "no market at " + (addrs?.market ?? "?") +
                     (NET.dev ? " — run `make deploy` (or `make dev`)" : ` on ${NET.name} — check ${NET.deployments}`);
