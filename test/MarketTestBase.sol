@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {Market} from "../src/Market.sol";
 import {MockToken, MockFeeToken} from "../src/Mocks.sol";
+import {Sweeper} from "./helpers/Sweeper.sol";
 
 /// @notice Pair-agnostic Market tests. Every test here runs once per concrete pair.
 /// @dev A subclass deploys its pair in _deploy() and sets the config fields below.
@@ -557,6 +558,101 @@ abstract contract MarketTestBase is Test {
         vm.expectRevert(Market.OrderNotOpen.selector);
         vm.prank(farmer);
         market.reclaim(id);
+    }
+
+    // ------------------------------------------------------------------
+    // Sweeping through a contract
+    // ------------------------------------------------------------------
+
+    /// @dev Three open orders of different sizes, a Sweeper funded for all of them, and their total cost.
+    function _setUpSweep() internal returns (Sweeper sweeper, uint256[] memory ids, uint256 total) {
+        ids = new uint256[](3);
+        ids[0] = createOrder(unit, price);
+        ids[1] = createOrder(2 * unit, price);
+        ids[2] = createOrder(unit, price);
+
+        for (uint256 i; i < ids.length; ++i) {
+            total += market.costOf(ids[i]);
+        }
+
+        sweeper = new Sweeper(market);
+        _mintQuote(address(sweeper), total);
+    }
+
+    /// @dev `buyer` fills `id` directly, before the sweep lands.
+    function _takeFirst(uint256 id) internal {
+        _fundQuote(buyer, market.costOf(id));
+        vm.prank(buyer);
+        market.fill(id);
+    }
+
+    function test_sweep_fillsSeveralOrdersInOneTx() public {
+        (Sweeper sweeper, uint256[] memory ids, uint256 total) = _setUpSweep();
+
+        vm.prank(bot);
+        sweeper.sweepAll(ids);
+
+        for (uint256 i; i < ids.length; ++i) {
+            assertEq(uint8(_status(ids[i])), uint8(Market.OrderStatus.Filled));
+        }
+        assertEq(baseToken.balanceOf(address(sweeper)), 4 * unit, "sweeper got all base");
+        assertEq(quote.balanceOf(address(sweeper)), 0, "sweeper spent all quote");
+        assertEq(quote.balanceOf(farmer), total, "farmer paid in full");
+        assertEq(baseToken.balanceOf(address(market)), 0, "market holds nothing");
+    }
+
+    function test_sweep_allOrNothingRevertsWhenOneOrderTaken() public {
+        (Sweeper sweeper, uint256[] memory ids, uint256 total) = _setUpSweep();
+        _takeFirst(ids[1]);
+
+        vm.expectRevert(Market.OrderNotOpen.selector);
+        vm.prank(bot);
+        sweeper.sweepAll(ids);
+
+        // The whole sweep rolled back: the other orders are still open and the sweeper kept its funds.
+        assertEq(uint8(_status(ids[0])), uint8(Market.OrderStatus.Open));
+        assertEq(uint8(_status(ids[2])), uint8(Market.OrderStatus.Open));
+        assertEq(baseToken.balanceOf(address(sweeper)), 0);
+        assertEq(quote.balanceOf(address(sweeper)), total);
+    }
+
+    function test_sweep_skipFillsTheRestWhenOneOrderTaken() public {
+        (Sweeper sweeper, uint256[] memory ids, uint256 total) = _setUpSweep();
+        uint256 takenCost = market.costOf(ids[1]);
+        _takeFirst(ids[1]);
+
+        vm.prank(bot);
+        uint256 filled = sweeper.sweepSkip(ids);
+
+        assertEq(filled, 2, "two of three filled");
+        assertEq(uint8(_status(ids[0])), uint8(Market.OrderStatus.Filled));
+        assertEq(uint8(_status(ids[2])), uint8(Market.OrderStatus.Filled));
+        assertEq(baseToken.balanceOf(buyer), 2 * unit, "early buyer kept their order");
+        assertEq(baseToken.balanceOf(address(sweeper)), 2 * unit, "sweeper got the other two");
+        assertEq(quote.balanceOf(address(sweeper)), takenCost, "sweeper kept the skipped order's cost");
+        assertEq(quote.balanceOf(farmer), total, "farmer paid in full across both buyers");
+    }
+
+    /// @dev SelfFill only checks msg.sender, so a farmer can get round it with a contract.
+    ///      That's harmless: they just pay themselves and get their own base back.
+    function test_sweep_farmerCanSelfFillThroughContract() public {
+        uint256 id = createOrder(unit, price);
+        uint256 cost = market.costOf(id);
+
+        vm.prank(farmer);
+        Sweeper sweeper = new Sweeper(market);
+        _mintQuote(address(sweeper), cost);
+
+        uint256[] memory ids = new uint256[](1);
+        ids[0] = id;
+        vm.prank(farmer);
+        sweeper.sweepAll(ids);
+
+        assertEq(uint8(_status(id)), uint8(Market.OrderStatus.Filled));
+        assertEq(quote.balanceOf(farmer), cost, "farmer was paid their own money");
+        assertEq(quote.balanceOf(address(sweeper)), 0);
+        assertEq(baseToken.balanceOf(address(sweeper)), unit, "farmer's contract holds the base");
+        assertEq(baseToken.balanceOf(address(market)), 0, "nothing stuck in the market");
     }
 
     // ------------------------------------------------------------------
